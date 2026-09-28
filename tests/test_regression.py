@@ -510,3 +510,38 @@ def test_crps_decomposition_counts_observations_outside_the_intervals():
     assert decomposed["reliability"] + decomposed["crps_potential"] == pytest.approx(
         decomposed["crps"]
     )
+
+
+def _intervals_with_coverage(y, coverage, half_width):
+    """Intervals of constant width 2*half_width covering exactly ``coverage`` of y."""
+    k = int(round(coverage * y.size))
+    covered = np.arange(y.size) < k
+    lower = np.where(covered, y - half_width, y + 0.5)
+    upper = np.where(covered, y + half_width, y + 0.5 + 2 * half_width)
+    return lower, upper
+
+
+def test_sharpness_levels_are_weighted_by_calibration():
+    """NF3-02 / NF4-04: weight 1 within the tolerance, 0 at twice it, linear between."""
+    y = np.linspace(0.0, 100.0, 1000)
+    spec = {0.5: (0.5, 10.0), 0.8: (0.725, 20.0), 0.9: (0.78, 30.0)}  # errors 0, -0.075, -0.12
+    intervals = {lvl: _intervals_with_coverage(y, cov, hw) for lvl, (cov, hw) in spec.items()}
+    out = multilevel_interval_coverage(y, intervals, tolerance=0.05)
+
+    def ratio(lvl, hw):
+        ref = np.quantile(y, 0.5 + lvl / 2) - np.quantile(y, 0.5 - lvl / 2)
+        return 2 * hw / ref
+
+    expected = 1 - (1.0 * ratio(0.5, 10.0) + 0.5 * ratio(0.8, 20.0)) / 1.5
+    assert out["n_calibrated_levels"] == 1
+    assert out["sharpness_weight"] == 1.0
+    assert out["sharpness_skill"] == pytest.approx(expected, abs=1e-4)
+
+    # Every level inside the band but none within the tolerance: the best
+    # weight is below 1 and n_calibrated_levels counts only the calibrated ones.
+    band = {0.5: (0.425, 10.0), 0.8: (0.71, 20.0)}  # errors -0.075, -0.09
+    intervals = {lvl: _intervals_with_coverage(y, cov, hw) for lvl, (cov, hw) in band.items()}
+    out = multilevel_interval_coverage(y, intervals, tolerance=0.05)
+    assert out["n_calibrated_levels"] == 0
+    assert out["sharpness_weight"] == pytest.approx(0.5)
+    assert out["sharpness_skill"] is not None

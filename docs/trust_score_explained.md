@@ -91,9 +91,11 @@ point rises linearly from 39 (error-detection AUROC 0.6 or lower, or no
 probabilities) to 59 (AUROC 0.7 or higher): a model whose decisions do not beat
 the baseline but whose confidence ranks errors is limited to grade C, not
 blocked. The skill ramp spans at least 10 correctly predicted non-majority
-samples (its end is `max(0.10, 10 / n_non_majority)`, at most 1), so with rare
-classes one more correct prediction moves the score by at most about 6 points
-(or 61 / n_non_majority below 10 such samples), never from D to A.
+samples (its end is `max(0.10, 10 / n_non_majority)`), so one more correct
+prediction moves the ceiling by at most about 6 points, never from D to A.
+With fewer than 10 non-majority samples in the evaluation set even a perfect
+model cannot lift this ceiling completely: there is too little evidence of
+skill.
 
 Below 100 samples the overconfidence estimate is too noisy to block on (about
 20% false alarms at n = 30 for a perfectly calibrated model), so its ceiling
@@ -105,20 +107,23 @@ stops at 59 (grade C) instead of blocking.
 
 Both regression blockers have ceiling ramps as well: the ceiling falls from 100
 to 39 as the skill (R²) drops from 0.10 to 0, and as the coverage shortfall
-grows from 0.05 to 0.10.
+grows from 0.05 to 0.10. Uncertainty informativeness from multi-level intervals
+is weighted by how well the best level is calibrated (weight 1 within 0.05 of
+nominal coverage, 0 at 0.10); the remaining weight goes to the error-variance
+correlation score when `predicted_variance` is supplied, else to 0.
 
 ### Caps and ceilings (grade C, score ≤ 59)
 
 - **Incomplete assessment** (`is_partial`): calibration or failure was not assessed, for example without `y_prob` or with a `modules=` subset, or the equalized-odds computation failed (fairness is then not assessed rather than scored from the subgroup gap alone; `missing_dimensions` lists `bias (equalized odds failed)`).
 - **Too few samples**: fewer than 30 samples.
 - **Fairness requested but not assessable**: sensitive features were supplied but no two groups have 30 or more samples; `missing_dimensions` lists `bias (no two groups large enough to compare)`.
+- **Weak dimension**: an assessed sub-score below 40 lowers the ceiling linearly from 100 (at 40) to 59 (at 30 and below).
 
 The sample-count rules (30 samples for a passing grade, 100 for the
 overconfidence blocker, 30 per fairness group) are deliberate steps, not
 ramps: below them the evidence is too thin to rely on, and adding one sample
 can move the score across the step. When `y_true` contains a single class the
 no-skill check cannot run; a warning is logged.
-- **Weak dimension**: an assessed sub-score below 40 lowers the ceiling linearly from 100 (at 40) to 59 (at 30 and below).
 
 Top-label measures (multiclass ECE, overconfidence error, error-detection
 AUROC) judge the probabilities' own prediction: a sample counts as correct

@@ -100,3 +100,39 @@ def test_informativeness_has_no_cliff_at_the_calibration_gate():
     # informativeness weight (100 / 0.05) plus interval calibration (500).
     _assert_lipschitz(errors, scores, slope=61 / 0.05 + 100 / 0.05 + 500)
     assert max(np.abs(np.diff(scores))) <= 6
+
+
+def test_informativeness_blends_into_the_correlation_score():
+    """NF4-01: with predicted variance, worse intervals never raise the score."""
+    from scipy.stats import norm
+
+    sigma = 0.3 + 0.4 * np.abs(Y_TRUE)
+    y_pred = Y_TRUE + sigma * NOISE
+    errors, scores = [], []
+    for s in np.linspace(1.0, 1.5, 201):
+        intervals = {
+            lvl: (
+                y_pred - s * sigma * norm.ppf(0.5 + lvl / 2),
+                y_pred + s * sigma * norm.ppf(0.5 + lvl / 2),
+            )
+            for lvl in (0.3, 0.5, 0.7)
+        }
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            report = analyze(
+                None,
+                None,
+                Y_TRUE,
+                y_pred=y_pred,
+                task="regression",
+                prediction_intervals=intervals,
+                predicted_variance=sigma**2,
+                verbose=False,
+            )
+        cov = report.results["regression"]["interval_coverage"]
+        # The best-calibrated level sets the sharpness weight.
+        errors.append(min(abs(p["calibration_error"]) for p in cov["per_level"]))
+        scores.append(report.trust_score.score)
+    assert min(errors) < 0.05 and max(errors) > 0.10
+    # Old behaviour jumped 12 points at the band edge; now every step is small.
+    assert max(np.abs(np.diff(scores))) <= 4, scores

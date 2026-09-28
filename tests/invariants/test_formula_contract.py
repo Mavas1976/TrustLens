@@ -237,7 +237,7 @@ def test_zero_weight_on_every_assessed_dimension_is_rejected():
 def documented_no_skill_ceiling(accuracy, baseline, auroc, n=None):
     skill = (accuracy - baseline) / (1 - baseline)
     floor = 39.0 if auroc is None else 39 + 20 * min(max((auroc - 0.6) / 0.1, 0), 1)
-    ramp_end = 0.10 if n is None else min(1.0, max(0.10, 10 / (n * (1 - baseline))))
+    ramp_end = 0.10 if n is None else max(0.10, 10 / (n * (1 - baseline)))
     return documented_ceiling(ramp_end - skill, 0.0, ramp_end, floor)
 
 
@@ -295,14 +295,31 @@ def test_no_skill_end_point_follows_the_published_auroc_constants(auroc, expecte
     assert ts.is_blocked == (auroc < 0.6)
 
 
-@pytest.mark.parametrize(("n", "correct"), [(2000, 1), (2000, 3), (200, 1), (60, 2)])
-def test_no_skill_ramp_spans_at_least_ten_minority_samples(n, correct):
+@pytest.mark.parametrize(
+    ("n", "baseline", "correct"),
+    [
+        (2000, 0.99, 1),
+        (2000, 0.99, 3),
+        (200, 0.9, 1),
+        (60, 0.9, 2),
+        (200, 0.995, 1),
+        (500, 0.996, 2),
+    ],
+)
+def test_no_skill_ramp_spans_at_least_ten_minority_samples(n, baseline, correct):
     """NF3-01: with few minority samples one correct prediction is a small step."""
-    baseline = 0.99 if n == 2000 else 0.9
     accuracy = baseline + correct / n
     results = _results(0.02, 0.5, 1 - accuracy, accuracy=accuracy, baseline=baseline)
     results["failure"]["n_samples"] = n
     ts = compute_trust_score(results)
     limit = documented_no_skill_ceiling(accuracy, baseline, 0.5, n=n)
     assert ts.score == min(ts.base_score, int(np.floor(limit)))
-    assert ts.score <= 39 + 61 * correct / min(10, n * (1 - baseline)) + 1
+    assert ts.score <= 39 + 61 * correct / 10 + 1  # never D to A (NF4-02)
+
+
+def test_legacy_results_take_the_sample_count_from_class_counts():
+    """NF4-03: without n_samples the ramp still spans ten minority samples."""
+    results = _results(0.02, 0.5, 1 - 0.991, accuracy=0.991, baseline=0.99)
+    results["bias"] = {"class_imbalance": {"class_counts": {0: 1980, 1: 20}}}
+    ts = compute_trust_score(results)
+    assert ts.score <= 39 + 61 * 2 / 10 + 1

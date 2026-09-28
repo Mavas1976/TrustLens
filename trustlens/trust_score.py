@@ -317,7 +317,8 @@ class TrustScoreResult:
       Regression only (``None`` for classification). Explains how the Uncertainty
       Informativeness dimension was resolved: ``"present"`` (a sharpness proxy or
       error-variance correlation was scored), ``"unusable_uncertainty"``
-      (multi-level intervals were supplied but none passed the calibration gate,
+      (multi-level intervals were supplied but every level missed nominal
+      coverage by at least twice the calibration tolerance,
       so the dimension is scored a truthful ``0.0`` rather than dropped), or
       ``"absent"`` (no uncertainty evidence was supplied and the dimension's
       weight was redistributed). Lets a downstream consumer tell "0.0 because the
@@ -369,7 +370,7 @@ class TrustScoreResult:
             lines.append(f"  - {dim:<18} {score:5.1f}/100")
         if self.informativeness_status == "unusable_uncertainty":
             lines.append(
-                "  (informativeness = 0.0: intervals supplied but none passed the calibration gate)"
+                "  (informativeness = 0.0: intervals supplied but no level is calibrated enough)"
             )
         return "\n".join(lines)
 
@@ -608,10 +609,19 @@ def compute_trust_score(
             floor = _BLOCKED_SCORE_CAP + (_CAPPED_SCORE_CAP - _BLOCKED_SCORE_CAP) * detection
             ramp_end = _NO_SKILL_RAMP_END
             n_eval = failure.get("n_samples", calibration.get("n_samples"))
+            if n_eval is None:
+                # Results saved before n_samples was recorded (NF4-03).
+                counts = (results.get("bias") or {}).get("class_imbalance", {}).get("class_counts")
+                if counts:
+                    n_eval = sum(int(c) for c in counts.values())
             if n_eval:
                 n_minority = int(n_eval) * (1.0 - baseline)
                 if n_minority > 0:
-                    ramp_end = min(1.0, max(ramp_end, _NO_SKILL_RAMP_MIN_SAMPLES / n_minority))
+                    # Not capped at 1: with fewer than 10 non-majority samples
+                    # even a perfect model cannot show enough skill to lift the
+                    # ceiling fully, and each correct prediction stays a small
+                    # step (NF4-02).
+                    ramp_end = max(ramp_end, _NO_SKILL_RAMP_MIN_SAMPLES / n_minority)
             limit = _ramp_ceiling(ramp_end - skill, 0.0, ramp_end, floor)
             if limit is not None:
                 if skill <= 0:
@@ -777,14 +787,15 @@ _REGRESSION_DEFAULT_WEIGHTS: dict[str, float] = {
 # than — the 0.05 calibration GATE in metrics/regression.py
 # (``multilevel_interval_coverage``'s ``tolerance``). They answer different
 # questions and should NOT be unified:
-#   * 0.05 (metric layer) is a strict binary gate: which levels are calibrated
-#     *enough* to be admitted into the sharpness proxy, so over-confident
-#     intervals cannot be rewarded for looking "sharp". A hard pass/fail per level.
+#   * 0.05 (metric layer) decides which levels are calibrated *enough* to count
+#     fully in the sharpness proxy, so over-confident intervals cannot be
+#     rewarded for looking "sharp". Since methodology 2.2 a level's weight falls
+#     linearly from 1 at 0.05 to 0 at 0.10 instead of a hard pass/fail (NF3-02).
 #   * 0.20 (here) is a smooth ramp mapping the continuous ICE / |calibration_error|
 #     onto the 0–100 sub-score, so calibration quality degrades gracefully rather
 #     than cliff-edging. A gradient, not a gate.
-# Using 0.05 for the ramp would turn the sub-score into a cliff; using 0.20 for
-# the gate would let materially miscalibrated levels inflate the sharpness proxy.
+# Using 0.05 for the ramp would make the sub-score far too steep; using 0.20 for
+# admission would let materially miscalibrated levels inflate the sharpness proxy.
 _REG_CALIBRATION_TOLERANCE = 0.20
 
 # Heavy-tail penalty (docks the Accuracy/Skill dimension). The p90/median
@@ -882,22 +893,27 @@ def _uncertainty_informativeness_score(corr: dict) -> float:
     return 100.0 * float(np.clip(strongest, 0.0, 1.0))
 
 
-def _informativeness_from_sharpness(coverage: dict) -> float:
+def _informativeness_from_sharpness(coverage: dict, fallback: float | None = None) -> float:
     """
     Uncertainty-informativeness sub-score (0–100) from the calibration-conditioned
     sharpness proxy (RFC #155).
 
-    ``100 × clip(sharpness_skill, 0, 1)`` — rewards intervals sharper than the
-    climatology baseline *among the levels that pass calibration*, the
+    ``w × 100 × clip(sharpness_skill, 0, 1) + (1 − w) × fallback`` with ``w`` the
+    ``sharpness_weight`` (1 when a level is within the calibration tolerance,
+    0 at twice it) and ``fallback`` the correlation score or 0 — rewards
+    intervals sharper than the climatology baseline *among well-calibrated levels*, the
     CRPS-Resolution analog of the correlation-based score. Preferred over the
     error-variance correlation when multi-level intervals are available.
     """
     skill = float(coverage.get("sharpness_skill") or 0.0)
-    # Scaled by the best level's calibration weight, so the sub-score falls
-    # continuously to the "unusable uncertainty" 0 as the last usable level
-    # leaves the calibration band (NF3-02). Older results lack the weight.
-    weight = float(coverage.get("sharpness_weight", 1.0))
-    return 100.0 * float(np.clip(skill, 0.0, 1.0)) * float(np.clip(weight, 0.0, 1.0))
+    # Weighted by the best level's calibration weight (NF3-02). As the last
+    # usable level leaves the calibration band the score moves continuously to
+    # what applies once no level is usable: the error-variance correlation
+    # score when predicted variance was supplied (``fallback``), else the
+    # "unusable uncertainty" 0 (NF4-01). Older results lack the weight.
+    weight = float(np.clip(float(coverage.get("sharpness_weight", 1.0)), 0.0, 1.0))
+    sharpness = 100.0 * float(np.clip(skill, 0.0, 1.0))
+    return weight * sharpness + (1.0 - weight) * (fallback or 0.0)
 
 
 def _reg_metric_present(metric: dict | None) -> bool:
@@ -1017,14 +1033,17 @@ def regression_trust_score(
     corr_present = _reg_metric_present(corr) and ("pearson" in corr or "spearman" in corr)
     informativeness_status = "absent"
     if sharpness_skill is not None:
-        sub_scores["uncertainty_informativeness"] = _informativeness_from_sharpness(coverage)
+        fallback = _uncertainty_informativeness_score(corr) if corr_present else None
+        sub_scores["uncertainty_informativeness"] = _informativeness_from_sharpness(
+            coverage, fallback
+        )
         informativeness_status = "present"
     elif corr_present:
         sub_scores["uncertainty_informativeness"] = _uncertainty_informativeness_score(corr)
         informativeness_status = "present"
     elif n_interval_levels >= 2 and n_calibrated_levels == 0:
         # RFC #155 follow-up (PR #161 review): multi-level intervals WERE
-        # supplied, but the calibration gate rejected every level, so
+        # supplied, but every level fell outside the calibration band, so
         # ``sharpness_skill`` is None because the uncertainty was *unusable*,
         # not because it was absent — and there is no error-variance-correlation
         # fallback either. Score a truthful ``Informativeness = 0.0`` instead of
