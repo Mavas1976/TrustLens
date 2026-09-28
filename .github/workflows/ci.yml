@@ -227,6 +227,16 @@ jobs:
         run: python -m build
       - name: Check distribution
         run: twine check dist/*
+      - name: Check wheel contents
+        # Only the trustlens package may be installed (GB-03).
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          wheel = glob.glob("dist/*.whl")[0]
+          tops = {n.split("/")[0] for n in zipfile.ZipFile(wheel).namelist()}
+          extra = {t for t in tops if t != "trustlens" and not t.endswith(".dist-info")}
+          assert not extra, f"unexpected top-level entries in wheel: {sorted(extra)}"
+          PY
       - name: Install wheel
         run: pip install dist/*.whl
       - name: Smoke test

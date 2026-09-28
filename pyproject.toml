@@ -102,7 +102,9 @@ docs = [
 ]
 
 [tool.setuptools.packages.find]
-exclude = ["tests*","scratch*", "docs*", "examples*"]
+# Ship only the library; audit/ and scripts/ must not become top-level
+# packages in site-packages (GB-03).
+include = ["trustlens*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "trustlens._version.__version__" }
