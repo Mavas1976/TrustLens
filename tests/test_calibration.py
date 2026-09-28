@@ -366,3 +366,25 @@ class TestReliabilityCurve:
         np.testing.assert_allclose(frac_pos, np.array([0.5]))
         np.testing.assert_allclose(mean_pred, np.array([0.5]))
         np.testing.assert_array_equal(counts, np.array([4]))
+
+
+@pytest.mark.parametrize(
+    ("y_true", "y_prob", "message"),
+    [
+        ([1, 0, 1], [0.9, float("nan"), 0.2], "finite probabilities"),
+        ([1, 0, 1], [0.9, 1.5, 0.2], "finite probabilities"),
+        ([], [], "at least one sample"),
+        ([1, 2, 1], [0.9, 0.1, 0.2], "binary"),
+        ([1, 0], [0.5], "same length"),
+    ],
+)
+def test_calibration_metrics_reject_invalid_input(y_true, y_prob, message):
+    """TL-28: invalid input raises instead of returning a plausible number."""
+    from trustlens.metrics.calibration import (
+        expected_calibration_error,
+        maximum_calibration_error,
+    )
+
+    for metric in (expected_calibration_error, maximum_calibration_error):
+        with pytest.raises(ValueError, match=message):
+            metric(np.array(y_true), np.array(y_prob, dtype=float))

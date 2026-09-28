@@ -165,6 +165,22 @@ def _binned_calibration_gaps(
         )
     if n_bins < 1:
         raise ValueError(f"n_bins must be >= 1; got {n_bins}.")
+    if len(y_true) != len(y_prob):
+        raise ValueError(
+            f"y_true and y_prob must have the same length, got {len(y_true)} and {len(y_prob)}."
+        )
+    if len(y_true) == 0:
+        raise ValueError("Calibration metrics need at least one sample.")
+    if not np.all(np.isfinite(y_prob)) or np.any((y_prob < 0.0) | (y_prob > 1.0)):
+        raise ValueError(
+            "y_prob must contain finite probabilities in [0, 1]; out-of-range values would "
+            "be dropped from the bins while still counted in n (TL-28)."
+        )
+    if not np.all(np.isin(y_true, (0, 1))):
+        raise ValueError(
+            "y_true must be binary (0/1): positive-class labels, or 1/0 correctness for "
+            "top-label calibration."
+        )
 
     if strategy == "uniform":
         bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
