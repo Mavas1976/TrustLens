@@ -119,6 +119,8 @@ sequenceDiagram
 
 ### Reporting Layer (`trustlens/report.py`)
 
+`TrustReport` is assembled from focused mixins in `trustlens/_report/` (TL-18): `text.py` (console and text output), `plots.py` (plotting entry points), `io.py` (save and serialisation), `html.py` (Jupyter rendering, with escaping) and `base.py` (shared state). `report.py` keeps construction, scoring, patterns and the deployment explanation.
+
 - Packages diagnostic outputs with full backend provenance.
 - Generates textual and visual summaries.
 - Supports unified JSON serialization for experiment trackers.

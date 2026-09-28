@@ -26,7 +26,7 @@ This page provides the technical documentation for all public components of Trus
 ```{eval-rst}
 .. autoclass:: trustlens.report.TrustReport
    :members:
-   :show-inheritance:
+   :inherited-members:
 ```
 
 ### `trustlens.TrustScoreResult`
