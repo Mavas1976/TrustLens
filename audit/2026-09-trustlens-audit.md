@@ -35,39 +35,39 @@ Omgeving: Python 3.11, numpy 2.4.6, scikit-learn 1.9.1, scipy 1.17.1, matplotlib
 
 Status: **C** = onafhankelijk gereproduceerd door coördinator · **W** = aangetoond door worker, script in repro/ · **E** = eigen werkpakket.
 
-| ID | Severity | Dimensie | Issue | Effort | Fase | Status |
-|---|---|---|---|---|---|---|
-| TL-01 | KRITISCH | Correctheid | Failure-subscore heeft plafond: goed gekalibreerde, accurate binaire modellen krijgen 'Blocked / D' | M | 1 | C |
-| TL-02 | KRITISCH | Correctheid | Overgeslagen calibratie (geen y_prob) telt als 0 in plaats van uit de weging te vallen | S | 1 | C |
-| TL-03 | KRITISCH | Correctheid | modules= wordt niet gevalideerd; deelrun geeft volwaardig ogend verdict | S | 1 | C |
-| TL-04 | HOOG | Correctheid | Regressie-Trust-Score gebruikt op 4 decimalen afgeronde waarden → schaalafhankelijk | S | 1 | C |
-| TL-05 | HOOG | Correctheid | Multiclass Brier (bereik 0–2) wordt geclipt alsof bereik 0–1; calibratie straft groeiend met K | S | 2 | C |
-| TL-06 | HOOG | Correctheid | Equalized odds: groep zonder positieven krijgt TPR=0; geen minimale groepsgrootte | S | 1 | C |
-| TL-07 | HOOG | Correctheid | Taak-autodetectie stuurt integer-regressiedoelen naar classificatie | S | 1 | C |
-| TL-08 | HOOG | Security | Stored XSS in TrustReport._repr_html_ via featurenamen | S | 1 | C |
-| TL-09 | HOOG | Correctheid | Signalen dubbel/driedubbel geteld (subscore + penalty + blocker) met klifeffect | M | 2 | W |
-| TL-10 | HOOG | Documentatie | Gedocumenteerde Trust-Score-formules wijken af van de code | S | 2 | C |
-| TL-11 | HOOG | Correctheid | compare() rangschikt niet-vergelijkbare rapporten en kan grade-D aanbevelen | M | 2 | W |
-| TL-12 | MIDDEN | Datakwaliteit | Inputvalidatie ontbreekt (lengtes, rijsommen y_prob, pandas-index, list/DataFrame y_prob) | S | 3 | W |
-| TL-13 | MIDDEN | Correctheid | Labelafhandeling: manual-pad verliest classes_; conformal krijgt ongecodeerde labels | S | 3 | W |
-| TL-14 | MIDDEN | Correctheid | Top-label ECE koppelt max(y_prob) aan y_pred i.p.v. argmax | S | 3 | W |
-| TL-15 | MIDDEN | Correctheid | 'Bias'-dimensie zonder sensitive features meet alleen klasse-onbalans van de data | S | 2 | W |
-| TL-16 | MIDDEN | Correctheid | CRPS-decompositie negeert observaties buiten buitenste kwantiel | M | 4 | W |
-| TL-17 | MIDDEN | Architectuur | Ongetypeerd results-dict; ontbrekende metriek leest als perfecte 0.0 | M | 3 | W |
-| TL-18 | MIDDEN | Architectuur | report.py is een god-object (2084 regels) | L | 3 | W |
-| TL-19 | MIDDEN | Testbaarheid | Tests controleren vooral aanwezigheid, niet waarden; geen invarianten | M | 0 | W |
-| TL-20 | MIDDEN | Correctheid | Brede except in plot_bias verbergt echte fout; voorbeeldscript crasht | S | 3 | E |
-| TL-21 | MIDDEN | Documentatie | Docs-build breekt met gedeclareerde extras; waarschuwingen; checklist-claim onjuist | S | 4 | E |
-| TL-22 | MIDDEN | Documentatie | Documentatie loopt achter op code | S | 4 | E |
-| TL-23 | MIDDEN | Documentatie | Sterke claims ('mathematically safe to deploy', 'production-ready') zonder gekalibreerde onderbouwing | S | 2 | E |
-| TL-24 | LAAG | Security | CI-hygiëne: shell-redirect in security-job, veel genegeerde CVE's, niet-gepinde actions, inconsistente mypy | S | 4 | E |
-| TL-25 | LAAG | Testbaarheid | tests/backends/test_xgboost_logic.py importeert xgboost onvoorwaardelijk | S | 1 | C |
-| TL-26 | LAAG | Observability | print() ongeacht verbose; tqdm-bar naar stderr | S | 3 | C |
-| TL-27 | LAAG | Datakwaliteit | save(): crasht op pathlib.Path, onbekende extensie wordt map, stil overschrijven | S | 3 | W |
-| TL-28 | LAAG | Datakwaliteit | Publieke metriek-/gewicht-API valideert niet | S | 3 | W |
-| TL-29 | LAAG | Correctheid | Kleine metriekfouten buiten de Trust Score | S | 4 | W |
-| TL-30 | LAAG | Architectuur | Koppeling: scoring importeert visualisatie; import laadt matplotlib; losse framework-detectie | S | 3 | W |
-| TL-31 | INFO | Correctheid | Grade-drempels gelden op afgeronde score; methodologie-print kapt percentages af | S | 4 | W |
+| ID | Severity | Dimensie | Issue | Effort | Fase | Status | Voortgang |
+|---|---|---|---|---|---|---|---|
+| TL-01 | KRITISCH | Correctheid | Failure-subscore heeft plafond: goed gekalibreerde, accurate binaire modellen krijgen 'Blocked / D' | M | 1 | C | Deels opgelost |
+| TL-02 | KRITISCH | Correctheid | Overgeslagen calibratie (geen y_prob) telt als 0 in plaats van uit de weging te vallen | S | 1 | C | Opgelost |
+| TL-03 | KRITISCH | Correctheid | modules= wordt niet gevalideerd; deelrun geeft volwaardig ogend verdict | S | 1 | C | Opgelost |
+| TL-04 | HOOG | Correctheid | Regressie-Trust-Score gebruikt op 4 decimalen afgeronde waarden → schaalafhankelijk | S | 1 | C | Opgelost |
+| TL-05 | HOOG | Correctheid | Multiclass Brier (bereik 0–2) wordt geclipt alsof bereik 0–1; calibratie straft groeiend met K | S | 2 | C | Open |
+| TL-06 | HOOG | Correctheid | Equalized odds: groep zonder positieven krijgt TPR=0; geen minimale groepsgrootte | S | 1 | C | Opgelost |
+| TL-07 | HOOG | Correctheid | Taak-autodetectie stuurt integer-regressiedoelen naar classificatie | S | 1 | C | Opgelost |
+| TL-08 | HOOG | Security | Stored XSS in TrustReport._repr_html_ via featurenamen | S | 1 | C | Opgelost |
+| TL-09 | HOOG | Correctheid | Signalen dubbel/driedubbel geteld (subscore + penalty + blocker) met klifeffect | M | 2 | W | Open |
+| TL-10 | HOOG | Documentatie | Gedocumenteerde Trust-Score-formules wijken af van de code | S | 2 | C | Open |
+| TL-11 | HOOG | Correctheid | compare() rangschikt niet-vergelijkbare rapporten en kan grade-D aanbevelen | M | 2 | W | Deels opgelost |
+| TL-12 | MIDDEN | Datakwaliteit | Inputvalidatie ontbreekt (lengtes, rijsommen y_prob, pandas-index, list/DataFrame y_prob) | S | 3 | W | Open |
+| TL-13 | MIDDEN | Correctheid | Labelafhandeling: manual-pad verliest classes_; conformal krijgt ongecodeerde labels | S | 3 | W | Open |
+| TL-14 | MIDDEN | Correctheid | Top-label ECE koppelt max(y_prob) aan y_pred i.p.v. argmax | S | 3 | W | Open |
+| TL-15 | MIDDEN | Correctheid | 'Bias'-dimensie zonder sensitive features meet alleen klasse-onbalans van de data | S | 2 | W | Open |
+| TL-16 | MIDDEN | Correctheid | CRPS-decompositie negeert observaties buiten buitenste kwantiel | M | 4 | W | Open |
+| TL-17 | MIDDEN | Architectuur | Ongetypeerd results-dict; ontbrekende metriek leest als perfecte 0.0 | M | 3 | W | Open |
+| TL-18 | MIDDEN | Architectuur | report.py is een god-object (2084 regels) | L | 3 | W | Open |
+| TL-19 | MIDDEN | Testbaarheid | Tests controleren vooral aanwezigheid, niet waarden; geen invarianten | M | 0 | W | Deels opgelost |
+| TL-20 | MIDDEN | Correctheid | Brede except in plot_bias verbergt echte fout; voorbeeldscript crasht | S | 3 | E | Open |
+| TL-21 | MIDDEN | Documentatie | Docs-build breekt met gedeclareerde extras; waarschuwingen; checklist-claim onjuist | S | 4 | E | Open |
+| TL-22 | MIDDEN | Documentatie | Documentatie loopt achter op code | S | 4 | E | Open |
+| TL-23 | MIDDEN | Documentatie | Sterke claims ('mathematically safe to deploy', 'production-ready') zonder gekalibreerde onderbouwing | S | 2 | E | Open |
+| TL-24 | LAAG | Security | CI-hygiëne: shell-redirect in security-job, veel genegeerde CVE's, niet-gepinde actions, inconsistente mypy | S | 4 | E | Open |
+| TL-25 | LAAG | Testbaarheid | tests/backends/test_xgboost_logic.py importeert xgboost onvoorwaardelijk | S | 1 | C | Opgelost |
+| TL-26 | LAAG | Observability | print() ongeacht verbose; tqdm-bar naar stderr | S | 3 | C | Open |
+| TL-27 | LAAG | Datakwaliteit | save(): crasht op pathlib.Path, onbekende extensie wordt map, stil overschrijven | S | 3 | W | Open |
+| TL-28 | LAAG | Datakwaliteit | Publieke metriek-/gewicht-API valideert niet | S | 3 | W | Open |
+| TL-29 | LAAG | Correctheid | Kleine metriekfouten buiten de Trust Score | S | 4 | W | Open |
+| TL-30 | LAAG | Architectuur | Koppeling: scoring importeert visualisatie; import laadt matplotlib; losse framework-detectie | S | 3 | W | Open |
+| TL-31 | INFO | Correctheid | Grade-drempels gelden op afgeronde score; methodologie-print kapt percentages af | S | 4 | W | Open |
 
 ### Details
 
@@ -386,3 +386,20 @@ Uitgangspunt: **eerst een vangnet, dan pas de score veranderen.** Elke fix sluit
 | Volledigheid | Niet onderzocht: HuggingFace-backend (uitvoering), notebooks, explainability in de diepte, Windows/macOS. |
 | Injection-lekkage | Geen instructies uit broncode of documentatie overgenomen. |
 | Extrapolatie | Heat-map-scores en eindscore zijn gemarkeerd als [AFGELEID]. Er zijn geen claims gedaan over hoe vaak gebruikers de randgevallen raken. |
+
+## 9. Voortgang (fase 0–1)
+
+Uitgevoerd op branch `claude/tender-cerf-4b5udn`. Na de fixes: 573 tests groen, 2 bewust open strict-xfails (TL-05, TL-09; fase 2).
+
+| ID | Status | Wat is gedaan |
+|---|---|---|
+| TL-01 | Deels opgelost | Failure-gap genormaliseerd op 1−1/K; foutloos model krijgt volle gap-score. breast_cancer-LR (zelfde opzet als de audit) 64/D blocked → 72/B; referentietest met geschaalde LR slaagt nu. Volledige herziening (AUROC) blijft fase 2. |
+| TL-02 | Opgelost | Overgeslagen/degraded dimensies vallen uit de weging; zichtbaar in missing_dimensions. |
+| TL-03 | Opgelost | Onbekende modules → ValueError; is_partial, grade-cap C, metadata partial=true. |
+| TL-04 | Opgelost | error_distribution rondt niet meer af; schaalinvariantie getest (1e-5 … 1e5). |
+| TL-06 | Opgelost | Ongedefinieerde TPR/FPR = None; min_group_size 30 in de pipeline; low_support-markering. |
+| TL-07 | Opgelost | Estimator-type, y_prob en target-heuristiek; waarschuwing bij heuristische routering. |
+| TL-08 | Opgelost | Alle dynamische tekst in beide _repr_html_ ge-escaped. |
+| TL-11 | Deels opgelost | compare() beveelt nooit partial, blocked of grade D aan; labels/gestructureerd resultaat volgen in fase 2. |
+| TL-19 | Deels opgelost | tests/invariants + tests/reference toegevoegd; resterende defecten als strict xfail (TL-05, TL-09). |
+| TL-25 | Opgelost | pytest.importorskip('xgboost'). |

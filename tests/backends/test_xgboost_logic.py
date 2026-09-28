@@ -1,9 +1,10 @@
 import numpy as np
 import pytest
-import xgboost as xgb
 
 from trustlens.backends.types import PredictionBundle
 from trustlens.backends.xgboost import resolve
+
+xgb = pytest.importorskip("xgboost")
 
 
 def test_xgboost_multiclass_classifier():
