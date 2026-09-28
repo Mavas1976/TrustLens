@@ -81,7 +81,7 @@ import numpy as np
 # Constants
 # ---------------------------------------------------------------------------
 
-SCORE_VERSION = "2.1"
+SCORE_VERSION = "2.2"
 
 # Grade reported when no dimension could be scored (insufficient evidence).
 NOT_ASSESSED_GRADE = "N/A"
@@ -114,6 +114,13 @@ _BLOCK_FAIRNESS_GAP = 0.15  # equals the "severe" level of the fairness metrics
 # No-skill blocker only when confidence also carries little information about
 # errors; otherwise the decision threshold, not the model, is the problem.
 _NO_SKILL_AUROC = 0.6
+# No-skill ceiling (methodology 2.2, NF-01): normalised skill
+# (accuracy - baseline) / (1 - baseline) at which the ceiling is lifted, and the
+# error-detection AUROC at which a model without decision skill is limited to
+# grade C instead of D. Between the ends the ceiling moves linearly, so one
+# extra correct prediction cannot jump a model from D to A.
+_NO_SKILL_RAMP_END = 0.10
+_NO_SKILL_AUROC_FULL = 0.70
 # Below this many samples the overconfidence error is too noisy to block on
 # (P(OCE > 0.10) ≈ 0.2 at n = 30 for a perfectly calibrated model).
 _MIN_SAMPLES_OVERCONFIDENCE = 100
@@ -141,6 +148,12 @@ _WEAK_DIMENSION = 40.0  # below this an assessed sub-score starts lowering the s
 # ---------------------------------------------------------------------------
 
 
+def _equalized_odds_failed(bias_data: object) -> bool:
+    """True when the equalized-odds computation raised inside the pipeline."""
+    eo = bias_data.get("equalized_odds") if isinstance(bias_data, dict) else None
+    return isinstance(eo, dict) and eo.get("reason") == "computation_error"
+
+
 def _is_assessed(dimension: str, data: object) -> bool:
     """Return True when a module result carries the evidence its sub-score needs.
 
@@ -161,7 +174,9 @@ def _is_assessed(dimension: str, data: object) -> bool:
             and data.get("confidence_gap", {}).get("status") != "skipped"
         )
     if dimension == "bias":
-        return bool(_fairness_gaps(data))
+        # A crashed equalized-odds computation leaves fairness unassessed: the
+        # subgroup gap alone would make the model look fairer than it is (GB-06).
+        return not _equalized_odds_failed(data) and bool(_fairness_gaps(data))
     if dimension == "representation":
         silhouette = data.get("separability", {}).get("silhouette_score")
         return silhouette is not None and bool(np.isfinite(float(silhouette)))
@@ -480,7 +495,7 @@ def compute_trust_score(
     weights: dict[str, float] | None = None,
 ) -> TrustScoreResult:
     """
-    Compute the classification Trust Score (methodology v2.0) from a results dict.
+    Compute the classification Trust Score (methodology ``SCORE_VERSION``) from a results dict.
 
     Parameters
     ----------
@@ -501,8 +516,9 @@ def compute_trust_score(
     -----
     See the module docstring and ADR-001 for the formulas. In short: the
     weighted mean of the assessed sub-scores, then blockers (grade D, score
-    ≤ 39) and caps (grade C, score ≤ 59). Signals are counted once; there are no
-    additive penalties.
+    ≤ 39) and caps (grade C, score ≤ 59). Every blocker is approached by a
+    ceiling that falls linearly towards 39, so the score has no cliffs. Signals
+    are counted once; there are no additive penalties.
 
     Examples
     --------
@@ -523,6 +539,8 @@ def compute_trust_score(
         dim: fn(results[dim]) for dim, fn in scorers.items() if _is_assessed(dim, results.get(dim))
     }
     missing_dimensions = [d for d in _CORE_DIMENSIONS if d not in sub_scores]
+    if _equalized_odds_failed(results.get("bias")):
+        missing_dimensions.append("bias (equalized odds failed)")
     is_partial = bool(missing_dimensions)
 
     # 2. Weighted mean over the assessed dimensions
@@ -543,24 +561,45 @@ def compute_trust_score(
     # 3. Blockers: critical signals that must not be averaged away
     blockers: list[str] = []
     caps: list[str] = []
+    ceilings: list[tuple[float, str]] = []
     auroc = failure.get("confidence_auroc")
-    if accuracy is not None and baseline is not None and baseline < 1.0 and accuracy <= baseline:
+    if accuracy is not None and baseline is not None and baseline < 1.0:
         # With a single class in y_true every correct model "ties" the baseline,
         # so the check needs at least two classes (baseline < 1).
-        if auroc is None or float(auroc) < _NO_SKILL_AUROC:
+        skill = (accuracy - baseline) / (1.0 - baseline)
+        informative = auroc is not None and float(auroc) >= _NO_SKILL_AUROC
+        if skill <= 0 and not informative:
             blockers.append(
                 f"Blocked by no predictive skill (accuracy {accuracy:.3f} does not beat "
                 f"the majority-class baseline {baseline:.3f})"
             )
         else:
-            # Confidence still ranks errors (e.g. a calibrated rare-event model
-            # whose scores never cross 0.5): the decisions lack skill, the model
-            # may not. Flag, do not block.
-            caps.append(
-                f"Decisions do not beat the majority-class baseline (accuracy {accuracy:.3f} "
-                f"vs {baseline:.3f}); review the decision threshold (capped at grade C)"
-            )
-    ceilings: list[tuple[float, str]] = []
+            # Confidence that ranks errors (e.g. a calibrated rare-event model
+            # whose scores never cross 0.5) lifts the floor from 39 towards 59:
+            # the decisions lack skill, the model may not.
+            detection = 0.0
+            if auroc is not None:
+                detection = float(
+                    np.clip(
+                        (float(auroc) - _NO_SKILL_AUROC) / (_NO_SKILL_AUROC_FULL - _NO_SKILL_AUROC),
+                        0.0,
+                        1.0,
+                    )
+                )
+            floor = _BLOCKED_SCORE_CAP + (_CAPPED_SCORE_CAP - _BLOCKED_SCORE_CAP) * detection
+            limit = _ramp_ceiling(_NO_SKILL_RAMP_END - skill, 0.0, _NO_SKILL_RAMP_END, floor)
+            if limit is not None:
+                if skill <= 0:
+                    reason = (
+                        f"Decisions do not beat the majority-class baseline (accuracy "
+                        f"{accuracy:.3f} vs {baseline:.3f}); review the decision threshold"
+                    )
+                else:
+                    reason = (
+                        f"Accuracy {accuracy:.3f} barely beats the majority-class baseline "
+                        f"{baseline:.3f}"
+                    )
+                ceilings.append((limit, f"{reason}; limits the score to {int(np.floor(limit))}"))
     oce = calibration.get("overconfidence_error")
     if oce is not None:
         oce_value = float(oce)
@@ -605,10 +644,6 @@ def compute_trust_score(
                 )
 
     # 4. Caps: an incomplete assessment or a very weak dimension cannot pass
-    eo = (results.get("bias") or {}).get("equalized_odds")
-    if isinstance(eo, dict) and eo.get("reason") == "computation_error":
-        # A crash must not make fairness look better than it is (GB-06).
-        caps.append("Fairness assessment incomplete: equalized odds failed (capped at grade C)")
     n_samples = failure.get("n_samples", calibration.get("n_samples"))
     if n_samples is not None and int(n_samples) < _MIN_SAMPLES_FOR_GRADE:
         caps.append(
@@ -736,6 +771,11 @@ _REG_MAX_TAIL_DOCK_FRACTION = 0.50
 # Severe-miscoverage blocker: realised coverage this far below nominal means the
 # intervals are materially over-confident (the regression "confidently wrong").
 _REG_SEVERE_MISCOVERAGE = -0.10
+# Ceiling ramps before the regression blockers (methodology 2.2, NF-03): the
+# ceiling falls from 100 to 39 as the skill drops from 0.10 to 0, and as the
+# coverage shortfall grows from 0.05 to 0.10, so neither blocker is a cliff.
+_REG_SKILL_RAMP_END = 0.10
+_REG_MISCOVERAGE_RAMP_START = -0.05
 
 
 def _regression_accuracy_score(error_dist: dict, target_variance: float) -> dict[str, float]:
@@ -989,19 +1029,43 @@ def regression_trust_score(
     #    former extra composite penalty counted the same signal twice (TL-09).
     # ------------------------------------------------------------------
     blockers: list[str] = []
+    ceilings: list[tuple[float, str]] = []
     if skill < 0.0:
         blockers.append("Blocked by negative skill (worse than predicting the mean; R^2 < 0)")
-    elif (
-        interval_present
-        and calibration_error is not None
-        and calibration_error < _REG_SEVERE_MISCOVERAGE
-    ):
-        blockers.append(
-            f"Blocked by severe interval miscoverage (coverage {calibration_error:+.2f} "
-            "below nominal - over-confident intervals)"
+    else:
+        limit = _ramp_ceiling(
+            _REG_SKILL_RAMP_END - skill, 0.0, _REG_SKILL_RAMP_END, float(_BLOCKED_SCORE_CAP)
         )
-
-    final_score, base_score, grade, verdict, _ = _finalize(raw_score, blockers, [])
+        if limit is not None:
+            ceilings.append(
+                (
+                    limit,
+                    f"Skill R^2 {skill:.3f} is close to the mean predictor; limits the score "
+                    f"to {int(np.floor(limit))}",
+                )
+            )
+    if interval_present and calibration_error is not None:
+        if calibration_error < _REG_SEVERE_MISCOVERAGE:
+            blockers.append(
+                f"Blocked by severe interval miscoverage (coverage {calibration_error:+.2f} "
+                "below nominal - over-confident intervals)"
+            )
+        else:
+            limit = _ramp_ceiling(
+                -calibration_error,
+                -_REG_MISCOVERAGE_RAMP_START,
+                -_REG_SEVERE_MISCOVERAGE,
+                float(_BLOCKED_SCORE_CAP),
+            )
+            if limit is not None:
+                ceilings.append(
+                    (
+                        limit,
+                        f"Interval coverage {calibration_error:+.3f} below nominal limits the "
+                        f"score to {int(np.floor(limit))}",
+                    )
+                )
+    final_score, base_score, grade, verdict, binding = _finalize(raw_score, blockers, [], ceilings)
 
     return TrustScoreResult(
         score=final_score,
@@ -1014,6 +1078,7 @@ def regression_trust_score(
         base_score=base_score,
         is_blocked=bool(blockers),
         blockers=blockers,
+        caps_applied=binding,
         task_type="regression",
         informativeness_status=informativeness_status,
     )

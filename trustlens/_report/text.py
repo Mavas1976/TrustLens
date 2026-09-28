@@ -436,7 +436,7 @@ class TextReportMixin(ReportBase):
 
 
 def _methodology_lines(ts: Any) -> list[str]:
-    """Definitions printed under the score formula (methodology 2.0)."""
+    """Definitions printed under the score formula (current methodology, 2.x)."""
     return [
         f"  Method      : Trust Score methodology {getattr(ts, 'score_version', '1.x')}",
         "  Definitions :",
@@ -445,14 +445,15 @@ def _methodology_lines(ts: Any) -> list[str]:
         "    - Bias        : 100 x (1 - largest fairness gap / 0.30), with sensitive features only",
         "    - Blockers    : no skill, overconfidence > 0.10, fairness gap > 0.15 (grade D);",
         "                    ceilings fall continuously towards each threshold",
-        "    - Caps        : incomplete assessment (grade C); sub-scores below 40 lower the ceiling",
+        "    - Caps        : incomplete assessment or < 30 samples (grade C);",
+        "                    sub-scores below 40 lower the ceiling",
     ]
 
 
 def _score_summary_lines(ts: Any) -> list[str]:
     """Explain how the reported score was reached.
 
-    Methodology 2.0 reports blockers and caps; results from methodology 1.x
+    Methodology 2.x reports blockers and caps; results from methodology 1.x
     (for example rebuilt from older saved reports) still list their penalties.
     """
     penalties = getattr(ts, "penalties_applied", None) or {}

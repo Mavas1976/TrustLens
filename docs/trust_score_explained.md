@@ -16,8 +16,8 @@ probability of failure, a guarantee of safe behaviour, a certification or a
 regulatory assessment. Use it to rank candidates and to gate releases, and use
 the sub-scores and metric pages to decide what to fix.
 
-This page describes **methodology 2.1** (`TrustScoreResult.score_version`),
-introduced after the 2026-09 audit. The design decisions and their rationale
+This page describes **methodology 2.2** (`TrustScoreResult.score_version`),
+introduced after the 2026-09 audit and two independent verifications. The design decisions and their rationale
 are recorded in [ADR-001](adr/ADR-001-trust-score-methodology.md).
 
 ## Inputs Used
@@ -72,7 +72,7 @@ must use these keys and be non-negative.
 ### Blockers (grade D, score ≤ 39)
 
 **Classification:**
-- No predictive skill: accuracy does not beat the majority-class baseline *and* confidence carries little information about errors (error-detection AUROC below 0.6, or no probabilities). Not applied when `y_true` has a single class. If confidence does separate errors (for example a calibrated rare-event model whose scores never cross 0.5), the result is capped at C with a "review the decision threshold" note instead.
+- No predictive skill: accuracy does not beat the majority-class baseline *and* confidence carries little information about errors (error-detection AUROC below 0.6, or no probabilities). Not applied when `y_true` has a single class. If confidence does separate errors (for example a calibrated rare-event model whose scores never cross 0.5), the model is limited instead of blocked, with a "review the decision threshold" note (see the no-skill ceiling below).
 - Overconfidence: overconfidence error (the part of top-label ECE where confidence exceeds accuracy) above 0.10, on at least 100 samples. Underconfidence lowers the calibration sub-score but does not block.
 - Severe fairness violation: a fairness gap above 0.15.
 
@@ -84,6 +84,14 @@ crosses its threshold:
 |---|---|---|
 | Overconfidence error | 0.05 | 0.10 |
 | Largest fairness gap | 0.10 | 0.15 |
+| Normalised skill `(accuracy − baseline) / (1 − baseline)` | 0.10 | 0 |
+
+The no-skill ceiling ends at 39 only when confidence is uninformative. Its end
+point rises linearly from 39 (error-detection AUROC 0.6 or lower, or no
+probabilities) to 59 (AUROC 0.7 or higher): a model whose decisions do not beat
+the baseline but whose confidence ranks errors is limited to grade C, not
+blocked. One more correct prediction therefore moves the score by a few
+points, never from D to A.
 
 Below 100 samples the overconfidence estimate is too noisy to block on (about
 20% false alarms at n = 30 for a perfectly calibrated model), so its ceiling
@@ -93,9 +101,14 @@ stops at 59 (grade C) instead of blocking.
 - Negative skill (worse than predicting the mean).
 - Severe interval miscoverage (coverage more than 0.10 below nominal).
 
+Both regression blockers have ceiling ramps as well: the ceiling falls from 100
+to 39 as the skill (R²) drops from 0.10 to 0, and as the coverage shortfall
+grows from 0.05 to 0.10.
+
 ### Caps and ceilings (grade C, score ≤ 59)
 
-- **Incomplete assessment** (`is_partial`): calibration or failure was not assessed, for example without `y_prob` or with a `modules=` subset.
+- **Incomplete assessment** (`is_partial`): calibration or failure was not assessed, for example without `y_prob` or with a `modules=` subset, or the equalized-odds computation failed (fairness is then not assessed rather than scored from the subgroup gap alone; `missing_dimensions` lists `bias (equalized odds failed)`).
+- **Too few samples**: fewer than 30 samples.
 - **Weak dimension**: an assessed sub-score below 40 lowers the ceiling linearly from 100 (at 40) to 59 (at 30 and below).
 
 Top-label measures (multiclass ECE, overconfidence error, error-detection
@@ -137,7 +150,7 @@ data splits and seeds). `tests/reference/test_published_table.py` recomputes
 every value in the current-methodology column from this page, so the table
 cannot drift from the code:
 
-| Model | v0.5.0 | current (2.1) |
+| Model | v0.5.0 | current (2.2) |
 |---|---|---|
 | breast_cancer · LogReg | 68/D blocked | 93/A |
 | breast_cancer · RandomForest | 70/B | 87/A |
@@ -157,11 +170,14 @@ The main causes: the 1.x failure sub-score could not exceed 60 for binary
 models, ECE above 0.10 blocked even underconfident models, and signals were
 counted up to three times (sub-score, penalty and blocker). Methodology 2.1
 additionally weights undetectable errors by how often they occur and replaces
-the jumps at blocker thresholds with continuous ceilings.
+the jumps at blocker thresholds with continuous ceilings. Methodology 2.2 adds
+the same ceilings before the no-skill blocker and the regression blockers; none
+of the reference models above changes.
 
 ## How to Use This in Practice
 
 - Use the score for ranking and release gating, together with `blockers`, `caps_applied` and `is_partial`.
+- `compare()` recommends a model only among complete, unblocked reports that were scored on the same dimensions; if one report has a fairness (or representation) dimension and another does not, it recommends none.
 - Use sub-scores to identify which dimension needs work; the weakest dimension is named in explanations and in `compare()`.
 - Use full metric pages for root-cause analysis.
 

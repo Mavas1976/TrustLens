@@ -267,6 +267,10 @@ def test_equalized_odds_crash_caps_the_grade(monkeypatch):
     assert ts.base_score > 59  # the cap is what brings the grade down
     assert ts.grade == "C" and ts.score == 59
     assert any("equalized odds failed" in c for c in ts.caps_applied)
+    # NF-06: fairness is not assessed (no score from the subgroup gap alone),
+    # so the report is partial and compare() will not recommend it.
+    assert "bias" not in ts.sub_scores
+    assert ts.is_partial and "bias (equalized odds failed)" in ts.missing_dimensions
 
 
 def test_quick_analyze_refuses_model_without_data():
@@ -277,3 +281,47 @@ def test_quick_analyze_refuses_model_without_data():
 
     with pytest.raises(ValueError, match="pass X and y"):
         quick_analyze(LogisticRegression())
+
+
+@pytest.mark.parametrize("dtype", ["string", "object"])
+def test_pandas_na_in_sensitive_feature_forms_missing_group(dtype):
+    """NF-02: pd.NA in a string/object column is a missing value, not a crash."""
+    y, y_pred, y_prob = _binary()
+    feature = pd.Series(rng.choice(["a", "b"], N), dtype=dtype)
+    feature.iloc[:10] = pd.NA
+    report = analyze(
+        None,
+        None,
+        y,
+        y_pred=y_pred,
+        y_prob=y_prob,
+        sensitive_features={"f": feature},
+        verbose=False,
+    )
+    assert "<missing>" in report.results["bias"]["subgroup_performance"]["f"]
+
+
+def test_low_support_groups_are_named_in_a_warning(caplog):
+    """GA-04: excluded groups are logged by name, not silently dropped."""
+    y, y_pred, y_prob = _binary()
+    groups = np.array(["big"] * (N - 10) + ["tinygroupX"] * 10, dtype=object)
+    with caplog.at_level(logging.WARNING, logger="trustlens.core.pipeline"):
+        analyze(
+            None,
+            None,
+            y,
+            y_pred=y_pred,
+            y_prob=y_prob,
+            sensitive_features={"g": groups},
+            verbose=False,
+        )
+    assert "tinygroupX" in caplog.text and "excluded from fairness gaps" in caplog.text
+
+
+def test_quick_analyze_refuses_data_without_model():
+    """NF-08: the caller's data is never swapped for the demo dataset."""
+    from trustlens import quick_analyze
+
+    X = rng.normal(size=(20, 3))
+    with pytest.raises(ValueError, match="fitted model"):
+        quick_analyze(None, X, np.zeros(20, dtype=int))

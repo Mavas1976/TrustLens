@@ -58,8 +58,8 @@ def _results(ece, auroc, error_rate, gaps=None, oce=0.0, accuracy=None, baseline
 
 
 def test_score_version():
-    assert SCORE_VERSION == "2.1"
-    assert compute_trust_score(_results(0.02, 0.9, 0.1)).score_version == "2.1"
+    assert SCORE_VERSION == "2.2"
+    assert compute_trust_score(_results(0.02, 0.9, 0.1)).score_version == "2.2"
 
 
 @pytest.mark.parametrize("ece", [0.0, 0.03, 0.1, 0.2, 0.3])
@@ -225,10 +225,61 @@ def test_legacy_results_are_flagged():
     del results["calibration"]["overconfidence_error"]
     with pytest.warns(UserWarning, match="before Trust Score methodology 2.0"):
         ts = compute_trust_score(results)
-    assert ts.score_version == "2.1-legacy-input"
+    assert ts.score_version == "2.2-legacy-input"
 
 
 def test_zero_weight_on_every_assessed_dimension_is_rejected():
     """Review F7."""
     with pytest.raises(ValueError, match="weight 0"):
         compute_trust_score(_results(0.02, 0.9, 0.1), weights={"calibration": 0.0, "failure": 0.0})
+
+
+def documented_no_skill_ceiling(accuracy, baseline, auroc):
+    skill = (accuracy - baseline) / (1 - baseline)
+    floor = 39.0 if auroc is None else 39 + 20 * min(max((auroc - 0.6) / 0.1, 0), 1)
+    return documented_ceiling(0.10 - skill, 0.0, 0.10, floor)
+
+
+@pytest.mark.parametrize(
+    ("accuracy", "auroc"),
+    [(0.61, 0.55), (0.63, 0.55), (0.6, 0.65), (0.62, 0.65), (0.64, 0.9), (0.6, 0.9)],
+)
+def test_no_skill_ceiling_follows_the_documented_formula(accuracy, auroc):
+    ts = compute_trust_score(_results(0.02, auroc, 1 - accuracy, accuracy=accuracy, baseline=0.6))
+    limit = documented_no_skill_ceiling(accuracy, 0.6, auroc)
+    assert not ts.is_blocked
+    assert ts.score <= int(np.floor(limit))
+    assert ts.score == min(ts.base_score, int(np.floor(limit))) or any(
+        "Weak dimension" in c for c in ts.caps_applied
+    )
+
+
+def test_no_skill_is_continuous_in_accuracy_and_detection():
+    """NF-01: one extra correct prediction cannot move a model from D to A."""
+    for auroc in (0.5, 0.65, 0.9):
+        scores = [
+            compute_trust_score(
+                _results(0.02, auroc, 1 - float(a), accuracy=float(a), baseline=0.95)
+            ).score
+            for a in np.linspace(0.94, 0.97, 301)
+        ]
+        steps = np.abs(np.diff(scores))
+        assert steps.max() <= 2, (auroc, int(steps.max()))
+    scores = [
+        compute_trust_score(_results(0.02, float(u), 0.05, accuracy=0.95, baseline=0.95)).score
+        for u in np.linspace(0.5, 0.8, 301)
+    ]
+    assert np.abs(np.diff(scores)).max() <= 2
+    assert scores == sorted(scores)
+
+
+def test_weak_dimension_ramp_is_linear_between_30_and_40():
+    """GA-02: a calibration sub-score of 35 limits the score to 79, not 59."""
+    weights = {"calibration": 0.05, "failure": 0.95}
+    ts = compute_trust_score(_results(0.25 * (1 - 0.35), 0.99, 0.01), weights=weights)
+    assert ts.score == min(ts.base_score, int(np.floor(documented_ceiling(5, 0, 10, 59))))
+    scores = [
+        compute_trust_score(_results(float(e), 0.99, 0.01), weights=weights).score
+        for e in np.linspace(0.14, 0.18, 201)
+    ]
+    assert np.abs(np.diff(scores)).max() <= 2

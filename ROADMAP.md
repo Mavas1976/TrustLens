@@ -9,7 +9,7 @@
 
 - ✅ Stable ML evaluation pipeline (calibration, failure, bias, representation)
 - ✅ Head-to-head model comparison API (`trustlens.compare`)
-- ✅ Decision-ready Trust Score (methodology 2.0: sub-scores, blockers and caps; see ADR-001)
+- ✅ Decision-ready Trust Score (methodology 2.x: sub-scores, blockers and continuous ceilings; see ADR-001)
 - ✅ Framework-agnostic prediction resolver architecture (XGBoost, LightGBM, CatBoost)
 - ✅ Scientific Validation: Model Zoo Benchmark for accuracy/trust decoupling
 - ✅ Professional contributor infrastructure and documentation

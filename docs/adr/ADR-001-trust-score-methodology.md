@@ -101,13 +101,34 @@ without changing weights, thresholds or dimensions.
 | Weak dimension | Replaced the hard cap at a sub-score of 40 with a ceiling from 100 (at 40) to 59 (at 30). | GA-02 |
 | Published table | `tests/reference/test_published_table.py` recomputes every current-methodology value in Trust Score Explained, so the documentation cannot drift from the code. | GA-10 |
 
+### 4c. Methodology 2.2 (`score_version = "2.2"`)
+
+A second independent verification found that two blockers were still cliffs
+and that `compare()` could rank incomparable reports. Weights, dimensions and
+the ramped thresholds of 2.1 are unchanged; no reference model changes score.
+
+| Topic | Decision | Issue |
+|---|---|---|
+| No-skill blocker | Ceiling on the normalised skill `(accuracy − baseline) / (1 − baseline)`: 100 at 0.10, falling to its end point at 0. The end point is 39 when the error-detection AUROC is at most 0.6 (a blocker below 0.6 or without probabilities) and rises linearly to 59 at AUROC 0.7, replacing the separate "review the decision threshold" cap. In 2.1 one extra correct positive in 2,000 moved a model from 39/D to 88/A. | NF-01 |
+| Regression blockers | Ceilings from 100 to 39 as the skill (R²) falls from 0.10 to 0 and as the coverage shortfall grows from 0.05 to 0.10. In 2.1 coverage −0.0998 gave 68/B and −0.1016 gave 39/D. | NF-03 |
+| Failed equalized odds | Fairness is not assessed (no score from the subgroup gap alone) and the report is partial, listing `bias (equalized odds failed)`. The score can still exceed that of a successful run with a large gap, but a partial report is capped at C and is never recommended by `compare()`. | NF-06 |
+| `compare()` | No recommendation when eligible reports were scored on different dimensions (for example one with fairness, one without). | R-011 |
+| Continuity tests | Continuity is tested as a Lipschitz bound (score change per signal change), because measured signals such as coverage move in discrete steps on a finite sample. | NF-03 |
+
+**Deviation from the phase-0 plan (R-032).** The plan asked for an xfail test
+per critical and high issue before its fix. The fixes for TL-09, TL-10 and
+TL-11 landed before those tests existed, so xfail-first can no longer be shown
+for them. Instead, every issue has a regression test that fails on the
+pre-fix code; for the 2.2 changes this was checked by running the new tests
+against the 2.1 code and against targeted mutants.
+
 ### 5. Open questions
 
 - The package version is still 0.5.0 while the scores follow methodology 2.0.
   `score_version` identifies the methodology. Bump the package version when
   releasing (a maintainer decision).
-- The example notebooks (`examples/*.ipynb`) still describe penalties from 1.x
-  in their stored outputs. They need re-running under 2.0.
+- The example notebooks are executed in CI; their stored outputs were refreshed
+  under 2.2 with `python scripts/run_notebooks.py --write`.
 
 - Regression point-only reports score on accuracy alone (RFC #145) and are not
   marked partial. Revisit this if users read such scores as complete.

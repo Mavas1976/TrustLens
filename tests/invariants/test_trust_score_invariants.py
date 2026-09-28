@@ -399,3 +399,35 @@ def test_constant_confidence_accurate_model_is_not_capped():
         None, None, y, y_pred=y_pred, y_prob=np.column_stack([1 - p, p]), verbose=False
     ).trust_score
     assert ts.grade in ("A", "B"), (ts.score, ts.sub_scores, ts.caps_applied)
+
+
+def test_compare_refuses_reports_scored_on_different_dimensions():
+    """R-011: a model scored without fairness cannot win against one with fairness."""
+    from trustlens import compare
+
+    y, y_pred, y_prob = _calibrated_binary(3000, 8.0)
+    groups = np.where(np.arange(len(y)) % 2 == 0, "a", "b")
+    with_fairness = analyze(
+        None,
+        None,
+        y,
+        y_pred=y_pred,
+        y_prob=y_prob,
+        sensitive_features={"g": groups},
+        verbose=False,
+    )
+    without_fairness = analyze(None, None, y, y_pred=y_pred, y_prob=y_prob, verbose=False)
+    result = compare([with_fairness, without_fairness], names=["fair", "unchecked"])
+    assert result["recommended"] is None
+    assert any("different dimensions" in w for w in result["warnings"])
+    assert {r["name"] for r in result["ranking"]} == {"fair", "unchecked"}
+
+
+def test_trust_score_html_escapes_every_text_field():
+    """GB-09: TrustScoreResult HTML escapes the grade and verdict too."""
+    import dataclasses
+
+    y, y_pred, y_prob = _calibrated_binary(2000, 8.0)
+    ts = analyze(None, None, y, y_pred=y_pred, y_prob=y_prob, verbose=False).trust_score
+    html = dataclasses.replace(ts, verdict="<script>alert(1)</script>")._repr_html_()
+    assert "<script>" not in html and "&lt;script&gt;" in html
