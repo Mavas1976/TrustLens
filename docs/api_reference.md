@@ -14,6 +14,23 @@ This page provides the technical documentation for all public components of Trus
    metrics/conformal
 ```
 
+## Public API at a glance
+
+Everything exported by `import trustlens` (`trustlens.__all__`):
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+
+   trustlens.analyze
+   trustlens.quick_analyze
+   trustlens.compare
+   trustlens.compute_trust_score
+   trustlens.regression_trust_score
+   trustlens.TrustReport
+   trustlens.TrustScoreResult
+```
+
 ---
 
 ## Core API

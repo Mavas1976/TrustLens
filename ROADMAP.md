@@ -32,7 +32,7 @@ These are high-priority items currently being developed or targeted for the next
 - [ ] **TrustComparison** (Issue #57) — *Differential reliability audits*
 - [x] **XGBoost Support** — *Native prediction resolver architecture*
 - [x] **Model Zoo Benchmark** — *Scientific validation of trust diagnostics*
-- [~] **Deep Learning Backends** — *Experimental Keras & TensorFlow integration*
+- [ ] **Deep Learning Backends** — *Keras & TensorFlow resolvers (framework detection exists; no resolver yet — pass `y_prob` manually)*
 - [~] **HTML Report Export** (Issue #19) — *[OPEN]*
 - [x] **Maximum Calibration Error (MCE)** (Issue #1)
 
@@ -62,7 +62,7 @@ The minimal set of features required to be genuinely useful to practitioners.
 
 ## Phase 2: Core Expansion — *Going Deeper*
 
-**Status: COMPLETE (v0.5.0)**
+**Status: PARTIALLY COMPLETE** — checked items shipped (most in v0.5.0); unchecked items are still open.
 
 > **Focus:** High-impact ML features that integrate directly into the `analyze()` pipeline.
 
@@ -70,8 +70,8 @@ The minimal set of features required to be genuinely useful to practitioners.
 - [x] **Equalized Odds** (Issue #25)
 - [x] **UMAP/t-SNE Visualization** (Issue #22)
 - [x] **Jupyter Rich Display** (`_repr_html_`) (Issue #24)
-- [x] **Progress Bars** via `tqdm` (Issue #28)
-- [x] **Subgroup ECE** (calibration per demographic group)
+- [ ] **Progress Bars** via `tqdm` (Issue #28) — *implemented earlier, removed together with the tqdm dependency; not currently available*
+- [ ] **Subgroup ECE** (calibration per demographic group) — *not implemented yet*
 - [~] **HTML Report Export** (Issue #19) — [OPEN]
 - [ ] **Temperature Scaling** (Issue #18)
 - [x] **Maximum Calibration Error (MCE)** (Issue #1)
@@ -92,8 +92,8 @@ The minimal set of features required to be genuinely useful to practitioners.
 - [x] **XGBoost Integration** — Native `analyze()` support for `XGBClassifier` and raw `Booster`
 - [x] **LightGBM Integration** — Native `analyze()` support for `LGBMClassifier` and raw `Booster`
 - [x] **CatBoost Integration** — Native `analyze()` support for `CatBoostClassifier`
-- [~] **Keras Experimental** — Sequential and functional model support
-- [~] **TensorFlow Experimental** — SavedModel loading and lazy import hygiene
+- [ ] **Keras** — Sequential and functional model support (no resolver yet)
+- [ ] **TensorFlow** — SavedModel loading and lazy import hygiene (no resolver yet)
 
 ---
 
@@ -127,8 +127,8 @@ Making TrustLens a community standard.
 
 ### Contribution & Documentation
 - [x] Contributor hall of fame in README
-- [x] Video walkthrough series
-- [x] Interactive Jupyter notebooks (Colab-ready)
+- [ ] Video walkthrough series
+- [~] Interactive Jupyter notebooks (in `examples/`; Colab badges not added yet)
 - [ ] Plugin submission process (community plugin registry)
 - [ ] `trustlens-contrib` companion repository
 

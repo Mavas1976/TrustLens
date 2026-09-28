@@ -1,0 +1,39 @@
+name: Notebooks
+
+# Executes every notebook in examples/ against the checked-out code (GB-15).
+# Runs weekly, on demand, and on pull requests that touch the notebooks.
+on:
+  schedule:
+    - cron: "0 3 * * 1" # Mondays 03:00 UTC
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "examples/**.ipynb"
+      - "scripts/run_notebooks.py"
+      - ".github/workflows/notebooks.yml"
+
+concurrency:
+  group: notebooks-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  execute:
+    name: Execute example notebooks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install package and notebook runtime
+        run: pip install -e ".[dev,notebooks,xgboost,lightgbm,catboost]"
+      - name: Execute notebooks
+        run: python scripts/run_notebooks.py

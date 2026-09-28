@@ -30,7 +30,11 @@ The repository owner set this rule; it applies until they say otherwise.
 
 The jobs in `.github/workflows/ci.yml` (lint, typecheck, tests matrix,
 dependency-compat, security, docs, examples, build) and CodeQL
-(`.github/workflows/codeql.yml`).
+(`.github/workflows/codeql.yml`). The tests job also runs the docstring
+examples (`pytest trustlens --doctest-modules --import-mode=importlib`).
+When a PR touches `examples/*.ipynb`, the Notebooks workflow
+(`.github/workflows/notebooks.yml`) is required too; locally:
+`pip install -e ".[notebooks]" && python scripts/run_notebooks.py`.
 
 ## Local checks (run before pushing)
 
@@ -39,6 +43,7 @@ ruff check . && ruff format --check .
 mypy trustlens/
 pre-commit run --all-files
 MPLBACKEND=Agg python -m pytest -p no:cacheprovider -q
+MPLBACKEND=Agg python -m pytest trustlens --doctest-modules --import-mode=importlib -q
 python -m sphinx -W --keep-going -b html docs docs/_build/html
 ```
 

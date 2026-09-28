@@ -54,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 - The docs build with `sphinx -W` (the `[docs]` extra gains `sphinxcontrib-mermaid`; the conformal page is in the toctree). The API reference covers `quick_analyze`, `compare`, `compute_trust_score`, `regression_trust_score` and the results contract. README drops the hard-coded test-count and coverage badges; ROADMAP and SECURITY.md are corrected (TL-21, TL-22).
+- ROADMAP no longer marks tqdm progress bars, subgroup ECE, Keras/TensorFlow support, a video series or Colab badges as done; the API reference opens with an autosummary table of `trustlens.__all__` (GB-14).
 - Added `audit/2026-09-trustlens-audit.md` (31 findings with reproduction scripts) and ADR-001 *Trust Score methodology contract* (`docs/adr/`).
 
 ### Changed
@@ -77,6 +78,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Behaviour change**: callers that relied on `tpr == 0.0` / `fpr == 0.0` for groups without positives / negatives must handle `None`.
 - **Architecture (TL-17, TL-18, TL-30)**: `TrustReport` is split into mixins under `trustlens/_report/` (public API unchanged; `report.py` shrinks from 2,170 to about 330 lines); `trustlens/results_schema.py` documents the results dict as TypedDicts with a `check_results_contract()` checker used in tests; brand colours move to `trustlens._palette`, so `import trustlens` no longer loads matplotlib; framework detection matches the top-level package exactly; a mypy strictness ratchet covers the new modules.
 - **CI (TL-24)**: actions pinned to commit SHAs with Dependabot; pip-audit ignores live in `.github/pip-audit-ignore.txt` with reason and expiry, checked by `scripts/check_audit_ignores.py`; the security job's unquoted `mistune>=3.2.1` (a shell redirect) is fixed; new CI jobs build the docs with `-W` and run all examples from an empty directory; mypy runs with one configuration everywhere.
+- **Maintainability after independent verification**:
+  - All HTML output escapes through one helper, `trustlens._report.html.escape_text`; the TrustScoreResult HTML card moved out of the scoring module, and colours live in `trustlens._palette` (no matplotlib import needed for HTML) (GB-09).
+  - The report modules and `trustlens.core.inputs` are type-checked with strict mypy flags (GB-13).
+  - pip-audit ignore entries carry OSV-reviewed, code-specific reasons; the expiry checker also accepts GHSA identifiers (GB-07).
+  - Docstring examples run in CI (`pytest trustlens --doctest-modules`); the ECE, PICP and `analyze()` examples are executable with checked outputs, illustrative snippets are marked `+SKIP` (GB-11).
+  - A Notebooks workflow executes `examples/*.ipynb` weekly and on notebook changes (`scripts/run_notebooks.py`, new `[notebooks]` extra). The demo notebook no longer calls `Figure.show()` on a closed figure and the model-zoo notebook creates its `output/` folder (GB-15).
 - **Test safety net**: `tests/invariants/` (score properties) and `tests/reference/` (deterministic sklearn reference models with expected grade bands) guard the methodology; remaining known defects are tracked as strict xfails tagged with their issue id.
 - **Unusable-uncertainty scoring for the regression Trust Score**: When multi-level prediction intervals are supplied but *no* level passes the calibration gate (and no error-variance correlation fallback exists), the Uncertainty Informativeness dimension is now scored a truthful `0.0` — "the supplied uncertainty delivered zero usable resolution" — instead of being dropped and having its weight redistributed onto the other dimensions. A new `TrustScoreResult.informativeness_status` field (`"present"` / `"unusable_uncertainty"` / `"absent"`, `None` for classification) lets downstream consumers distinguish "0.0 because the intervals were all miscalibrated" from "dropped because none were supplied." Scoped to the multi-level path (`n_levels >= 2`); the single-level PICP path keeps the existing redistribute behavior. (refs #155, #161) Thanks @Whatsonyourmind
 
