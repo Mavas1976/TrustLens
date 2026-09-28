@@ -1,0 +1,2 @@
+save(Path) EXC AttributeError 'PosixPath' object has no attribute 'lower'
+quick_analyze(user model) prints 'demo' banner: ['', 'TrustLens Analysis: iris', 'Status: Loading demo model and iris validation data...']

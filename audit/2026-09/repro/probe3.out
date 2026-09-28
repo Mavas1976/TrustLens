@@ -1,0 +1,17 @@
+LOG WARNING trustlens.core.pipeline: Skipped calibration: y_prob is missing.
+LOG WARNING trustlens.core.pipeline: Degraded failure analysis: y_prob is missing. Confidence metrics skipped.
+full GaussianNB score 50 D blocked True subs {'calibration': 79.9, 'failure': 23.3, 'bias': 99.9} verdict Low Trust - Blocked by high diagnostic risk (misaligned confidence-weighted error distribution) degraded None
+degraded 45%-error y_pred-only score 15 D blocked True subs {'calibration': 0.0, 'failure': 10.6, 'bias': 99.9} verdict Low Trust - Blocked by high diagnostic risk (misaligned confidence-weighted error distribution) degraded True
+========== Model Comparison & Recommendation ==========
+GaussianNB       Score:  50/100 | Verdict: Low Trust - Blocked by high diagnostic risk (misaligned confidence-weighted error distribution)
+Manual           Score:  15/100 | Verdict: Low Trust - Blocked by high diagnostic risk (misaligned confidence-weighted error distribution)
+
+ Recommendation: DO NOT DEPLOY any model.
+  * All models triggered critical diagnostic blocks.
+
+Primary Causes:
+  * GaussianNB       : failure + calibration
+  * Manual           : failure
+
+XSS payload raw in _repr_html_: True
+['- Confidently Wrong</li><li>Warning: Significant performance gap detected across <script>alert(1)</script>.']

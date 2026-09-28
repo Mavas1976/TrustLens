@@ -1,0 +1,58 @@
+1a CalibrationScore docstring(0.5BS+0.5ECE) = 91.0  impl = 78.0
+1b FailureScore docstring(100*clip(gap)) = 30.0  impl = 42.00000000000001
+1c BiasScore docstring(ratio/20) = 82.5  impl ((ratio-1)/19) = 84.47368421052633
+1d Bias balanced ratio=1: docstring = 97.5  impl = 100.0
+2a perfectly calibrated binary, p~U(0,1): score=54 base=66 grade=D blocked=True sub={'calibration': 78.1, 'failure': 23.2, 'bias': 100.0} pen={'Failure': 12.3} verdict='Low Trust - Blocked by high diagnostic risk (misaligned confidence-wei'
+    gap: 0.1081  err: {'total_errors': 540, 'overall_error_rate': 0.27}
+2b strong calibrated binary (logit sd 4): score=63 base=73 grade=D blocked=True sub={'calibration': 88.2, 'failure': 31.6, 'bias': 99.7} pen={'Failure': 9.5} verdict='Low Trust - Blocked by high diagnostic risk (misaligned confidence-wei'
+    acc: 0.8655  gap: 0.1785
+2c very strong calibrated binary (logit sd 12): score=71 base=78 grade=D blocked=True sub={'calibration': 95.7, 'failure': 38.9, 'bias': 99.9} pen={'Failure': 7.0} verdict='Low Trust - Blocked by high diagnostic risk (misaligned confidence-wei'
+    acc: 0.9525  gap: 0.2481  n_incorrect: 190
+2d all-correct, conf 0.99: score=59 base=73 grade=D blocked=True sub={'calibration': 98.5, 'failure': 20.0, 'bias': 100.0} pen={'Failure': 13.3} verdict='Low Trust - Blocked by high diagnostic risk (misaligned confidence-wei'
+2e all-WRONG, conf 0.99: score=0 base=28 grade=D blocked=True sub={'calibration': 0.0, 'failure': 0.0, 'bias': 100.0} pen={'Failure': 20.0, 'Calibration': 15.0} verdict="Low Trust - Blocked by 'confidently wrong' behavior (mismatched confid"
+3 ECE=0.0   : cal_sub= 95.0 pen={'Failure': 6.0} base=79 score=73 grade=B blocked=False
+3 ECE=0.05  : cal_sub= 87.5 pen={'Failure': 6.0} base=76 score=70 grade=B blocked=False
+3 ECE=0.08  : cal_sub= 83.0 pen={'Failure': 6.0, 'Calibration': 4.5} base=74 score=64 grade=B blocked=False
+3 ECE=0.1   : cal_sub= 80.0 pen={'Failure': 6.0, 'Calibration': 7.5} base=73 score=59 grade=C blocked=False
+3 ECE=0.1001: cal_sub= 80.0 pen={'Failure': 6.0, 'Calibration': 7.5} base=73 score=59 grade=D blocked=True
+3 ECE=0.15  : cal_sub= 72.5 pen={'Failure': 6.0, 'Calibration': 15.0} base=70 score=49 grade=D blocked=True
+3 ECE=0.3   : cal_sub= 50.0 pen={'Failure': 6.0, 'Calibration': 15.0} base=61 score=40 grade=D blocked=True
+4 gap=0.0   : bias_sub=100.0 pen={'Failure': 6.0} score=72 grade=B blocked=False
+4 gap=0.05  : bias_sub= 97.5 pen={'Failure': 6.0} score=71 grade=B blocked=False
+4 gap=0.1   : bias_sub= 95.0 pen={'Failure': 6.0, 'Fairness': 7.5} score=63 grade=B blocked=False
+4 gap=0.15  : bias_sub= 92.5 pen={'Failure': 6.0, 'Fairness': 15.0} score=54 grade=C blocked=False
+4 gap=0.1501: bias_sub= 92.5 pen={'Failure': 6.0, 'Fairness': 15.0} score=54 grade=D blocked=True
+4 gap=0.3   : bias_sub= 85.0 pen={'Failure': 6.0, 'Fairness': 15.0} score=52 grade=D blocked=True
+5 raw=39.4: score=39 grade=D
+5 raw=39.5: score=40 grade=C
+5 raw=39.6: score=40 grade=C
+5 raw=40: score=40 grade=C
+5 raw=59.5: score=60 grade=B
+5 raw=60: score=60 grade=B
+5 raw=79.49: score=79 grade=B
+5 raw=79.5: score=80 grade=A
+5 raw=80: score=80 grade=A
+5 raw=100: score=100 grade=A
+6a two dims: {'calibration': 0.538, 'failure': 0.462}
+6b custom weights sum 2: {'calibration': 0.5, 'failure': 0.5}
+6c negative weight: {'calibration': 0.5, 'failure': 0.5} 61
+6d all-zero weights -> equal fallback: {'calibration': 0.5, 'failure': 0.5} 61
+6e unknown weight key 'fairness': {'calibration': 0.538, 'failure': 0.462}
+6f empty results: 0 D Low Trust - serious issues, do not deploy
+7 no y_prob (calibration skipped, failure degraded), 98% acc: score=21 base=34 grade=D blocked=True sub={'calibration': 0.0, 'failure': 19.6, 'bias': 100.0} pen={'Failure': 13.5} verdict='Low Trust - Blocked by high diagnostic risk (misaligned confidence-wei'
+7b analyze(y_pred only, 98% acc): score=21 base=34 grade=D blocked=True sub={'calibration': 0.0, 'failure': 19.6, 'bias': 100.0} pen={'Failure': 13.5} verdict='Low Trust - Blocked by high diagnostic risk (misaligned confidence-wei'
+8 multiclass Brier 1.2 + ECE 0: 0.0
+9 imbalance_ratio=1: bias_sub=100.0
+9 imbalance_ratio=2: bias_sub=97.36842105263158
+9 imbalance_ratio=5: bias_sub=89.47368421052632
+9 imbalance_ratio=10: bias_sub=76.31578947368422
+9 imbalance_ratio=20: bias_sub=50.0
+9 imbalance_ratio=50: bias_sub=50.0
+9 imbalance_ratio=inf: bias_sub=50.0
+10a calibration dict without keys: 0.0
+10b failure dict without misclassification_summary, gap .5: 50.0
+10c representation NaN silhouette: 50.0
+11 all penalties max: score=0 base=24 grade=D blocked=True sub={'calibration': 0.0, 'failure': 10.0, 'bias': 75.0} pen={'Failure': 12.5, 'Calibration': 11.2, 'Fairness': 11.2} verdict="Low Trust - Blocked by 'confidently wrong' behavior (mismatched confid"
+   sum(pen)= 34.9
+12 eq-odds severe only: score=57 base=78 grade=D blocked=True sub={'calibration': 92.0, 'failure': 42.0, 'bias': 100.0} pen={'Failure': 6.0, 'Fairness': 15.0} verdict='Low Trust - Blocked by severe fairness violations'
+12b eq-odds skipped dict: score=72 base=78 grade=B blocked=False sub={'calibration': 92.0, 'failure': 42.0, 'bias': 100.0} pen={'Failure': 6.0} verdict='Good Trust - minor issues to address'

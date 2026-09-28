@@ -143,6 +143,7 @@ exclude = [
     "build",
     "dist",
     "*.ipynb",
+    "audit",  # frozen audit evidence scripts (audit/2026-09/repro); not package code
 ]
 
 [tool.ruff.lint]

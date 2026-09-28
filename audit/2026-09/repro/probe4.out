@@ -1,0 +1,16 @@
+['bias'] score 100 A blocked False subs {'bias': 99.9} weights {'bias': 1.0} warnings []
+['calibration'] score 75 B blocked False subs {'calibration': 79.9} weights {'calibration': 1.0} warnings []
+['failure'] score 11 D blocked True subs {'failure': 23.3} weights {'failure': 1.0} warnings []
+['representation'] score 0 D blocked False subs {} weights {} warnings []
+rison & Recommendation ==========
+GaussianNB       Score:  50/100 | Verdict: Low Trust - Blocked by high diagnostic risk (misaligned confidence-weighted error distribution)
+GaussianNB       Score: 100/100 | Verdict: High Trust - production-ready
+
+Recommendation: Deploy GaussianNB.
+  * Maintains highest overall Trust Score without critical deployment blocks.
+  * Comparative Advantage: GaussianNB over GaussianNB
+    - Lower penalty burden (-0.0 vs -16.9)
+    - Primarily due to GaussianNB's failure risks + calibration risks.
+    - Note: GaussianNB was filtered out due to active diagnostic blocks (Low Trust - Blocked by high diagnostic risk (misaligned confidence-weighted error distribution)).
+
+

@@ -1,0 +1,23 @@
+E1 equalized_odds per-group TPR/FPR & gaps vs manual max|diff|: 0
+E2 perfect classifier, group1 has no positives: {'0': {'n_samples': 8, 'tpr': 1.0, 'fpr': 0.0}, '1': {'n_samples': 4, 'tpr': 0.0, 'fpr': 0.0}, '__summary__': {'tpr_gap': 1.0, 'fpr_gap': 0.0, 'tpr_violation': 'severe', 'fpr_violation': 'acceptable', 'best_tpr_group': '0', 'worst_tpr_group': '1'}}
+E2 -> trust score: 71 D True Low Trust - Blocked by severe fairness violations
+E3 subgroup with n=1 (wrong): gap {'performance_gap': 0.951, 'best_group': '0', 'worst_group': '1'} {'n_samples': 1, 'accuracy': 0.0, 'f1': 0.0}
+E3 equalized_odds with n=1 group summary: {'tpr_gap': 0.948, 'fpr_gap': 0.9542, 'tpr_violation': 'severe', 'fpr_violation': 'severe', 'best_tpr_group': '0', 'worst_tpr_group': '1'}
+E4 violation at 0.15: moderate  at 0.05: moderate  at 0.1500001: severe
+E4b round(0.65-0.5,4) 0.15 moderate
+E5 labels {1,2}: RAISES ValueError At least one label specified must be in y_true
+E6 imbalance ratio [0,0,0,1]: 3.0
+E6b empty: RAISES ValueError zero-size array to reduction operation minimum which has no identity
+E7 NaN group labels: RAISES ValueError Found empty input array (e.g., `y_true` or `y_pred`) while a minimum of 1 sample is requir
+F1 confidence_gap & per-class error_rate vs ref max|diff|: 0
+F2 1-D y_prob gap: -0.4  2-col gap: 0.0667
+F3 binary max possible gap (correct conf 1.0, wrong conf .5): 0.5
+F4 conf=1.0 hist last bin: 2
+R1 silhouette vs sklearn max|diff|: 0
+R2 within_class_distance: 2.6697  exact mean pairwise (i<j): 2.9048
+R3 2 pts per class (true within=1.0, between mean=10): 0.0 10.0
+R4 single class: {'silhouette_score': nan, 'within_class_distance': 2.3514, 'between_class_distance': 0.0, 'separability_ratio': 0.0, 'n_samples_used': 10, 'embedding_dim': 3}
+R5 n_labels==n_samples RAISES ValueError Number of labels is 3. Valid values are 2 to n_samples - 1 (inclusive)
+R6 CKA vs Kornblith linear CKA max|diff|: 6.661338147750939e-16
+R7 CKA invariances: orthogonal 1.0  scale 1e-4: 0.0  scale 1e-2: 1.0
+R7b ref at 1e-4: 1.0
