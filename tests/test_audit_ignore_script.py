@@ -33,3 +33,10 @@ def test_expired_missing_reason_and_malformed_entries_fail(tmp_path):
 def test_repository_ignore_list_is_valid():
     _, errors = module.parse(ROOT / ".github/pip-audit-ignore.txt", dt.date.today())
     assert errors == []
+
+
+def test_ghsa_identifiers_are_accepted(tmp_path):
+    f = tmp_path / "ignore.txt"
+    f.write_text("GHSA-4xh5-x5gv-qwph | expires 2099-01-01 | installer only\n")
+    ids, errors = module.parse(f, dt.date(2026, 9, 28))
+    assert ids == ["GHSA-4xh5-x5gv-qwph"] and errors == []

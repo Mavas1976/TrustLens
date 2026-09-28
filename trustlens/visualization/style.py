@@ -219,7 +219,7 @@ def apply_style(theme: Theme | None = None) -> Iterator[Theme]:
 
     Examples
     --------
-    >>> with apply_style() as theme:
+    >>> with apply_style() as theme:  # doctest: +SKIP
     ...     fig, ax = plt.subplots()
     ...     ax.plot([0, 1], [0, 1], color=theme.brand["blue"])
     """

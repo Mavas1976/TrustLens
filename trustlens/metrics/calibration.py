@@ -284,8 +284,12 @@ def expected_calibration_error(
 
     Examples
     --------
+    >>> import numpy as np
     >>> from trustlens.metrics.calibration import expected_calibration_error
-    >>> ece = expected_calibration_error(y_true, y_prob, n_bins=10)
+    >>> y_true = np.array([0, 1, 1, 0])
+    >>> y_prob = np.array([0.2, 0.9, 0.6, 0.4])
+    >>> round(expected_calibration_error(y_true, y_prob, n_bins=10), 4)
+    0.275
     """
     y_true = np.asarray(y_true, dtype=float)
     y_prob = np.asarray(y_prob, dtype=float)
@@ -376,8 +380,8 @@ def maximum_calibration_error(
 
     Examples
     --------
-    >>> from trustlens.metrics.calibration import maximum_calibration_error
-    >>> mce = maximum_calibration_error(y_true, y_prob, n_bins=10)
+    >>> from trustlens.metrics.calibration import maximum_calibration_error  # doctest: +SKIP
+    >>> mce = maximum_calibration_error(y_true, y_prob, n_bins=10)  # doctest: +SKIP
     """
     y_true = np.asarray(y_true, dtype=float)
     y_prob = np.asarray(y_prob, dtype=float)
@@ -487,7 +491,7 @@ def reliability_curve(
 
     Examples
     --------
-    >>> frac_pos, mean_pred, counts = reliability_curve(y_true, y_prob)
+    >>> frac_pos, mean_pred, counts = reliability_curve(y_true, y_prob)  # doctest: +SKIP
     """
     y_true = np.asarray(y_true, dtype=float)
     y_prob = np.asarray(y_prob, dtype=float)

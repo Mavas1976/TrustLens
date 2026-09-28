@@ -59,8 +59,8 @@ def misclassification_summary(
 
     Examples
     --------
-    >>> summary = misclassification_summary(y_true, y_pred, y_prob)
-    >>> print(summary[1]["error_rate"]) # error rate for class 1
+    >>> summary = misclassification_summary(y_true, y_pred, y_prob)  # doctest: +SKIP
+    >>> print(summary[1]["error_rate"]) # error rate for class 1  # doctest: +SKIP
     """
     y_true = np.asarray(y_true)
     y_pred = np.asarray(y_pred)
@@ -155,8 +155,8 @@ def confidence_gap(
 
     Examples
     --------
-    >>> gap_data = confidence_gap(y_true, y_pred, y_prob)
-    >>> print(f"Confidence gap: {gap_data['gap']:.3f}")
+    >>> gap_data = confidence_gap(y_true, y_pred, y_prob)  # doctest: +SKIP
+    >>> print(f"Confidence gap: {gap_data['gap']:.3f}")  # doctest: +SKIP
     """
     y_true = np.asarray(y_true)
     y_pred = np.asarray(y_pred)

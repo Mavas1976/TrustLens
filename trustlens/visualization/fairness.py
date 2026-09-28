@@ -117,8 +117,8 @@ def plot_subgroup_performance(
 
     Examples
     --------
-    >>> results = subgroup_performance(y_true, y_pred, {"gender": gender})
-    >>> fig = plot_subgroup_performance(results["gender"], "gender")
+    >>> results = subgroup_performance(y_true, y_pred, {"gender": gender})  # doctest: +SKIP
+    >>> fig = plot_subgroup_performance(results["gender"], "gender")  # doctest: +SKIP
     """
     with apply_style() as theme:
         groups = [g for g in subgroup_data if g != "__summary__"]
@@ -224,8 +224,8 @@ def plot_equalized_odds(
 
     Examples
     --------
-    >>> results = equalized_odds(y_true, y_pred, {"gender": gender})
-    >>> fig = plot_equalized_odds(results["gender"], "gender")
+    >>> results = equalized_odds(y_true, y_pred, {"gender": gender})  # doctest: +SKIP
+    >>> fig = plot_equalized_odds(results["gender"], "gender")  # doctest: +SKIP
     """
     with apply_style() as theme:
         import numpy as np
@@ -359,8 +359,8 @@ def plot_fairness_gap(
 
     Examples
     --------
-    >>> results = equalized_odds(y_true, y_pred, {"gender": gender})
-    >>> fig = plot_fairness_gap(results["gender"], "gender")
+    >>> results = equalized_odds(y_true, y_pred, {"gender": gender})  # doctest: +SKIP
+    >>> fig = plot_fairness_gap(results["gender"], "gender")  # doctest: +SKIP
     """
     with apply_style() as theme:
         summary = equalized_odds_data.get("__summary__", {})
@@ -467,9 +467,9 @@ def plot_subgroup_performance_multi(
 
     Examples
     --------
-    >>> results = subgroup_performance(y_true, y_pred, sensitive_features)
-    >>> figs = plot_subgroup_performance_multi(results)
-    >>> fig_gender = figs["gender"]
+    >>> results = subgroup_performance(y_true, y_pred, sensitive_features)  # doctest: +SKIP
+    >>> figs = plot_subgroup_performance_multi(results)  # doctest: +SKIP
+    >>> fig_gender = figs["gender"]  # doctest: +SKIP
     """
     return _plot_multi_helper(
         subgroup_data,
@@ -513,9 +513,9 @@ def plot_equalized_odds_multi(
 
     Examples
     --------
-    >>> results = equalized_odds(y_true, y_pred, sensitive_features)
-    >>> figs = plot_equalized_odds_multi(results)
-    >>> fig_age = figs["age"]
+    >>> results = equalized_odds(y_true, y_pred, sensitive_features)  # doctest: +SKIP
+    >>> figs = plot_equalized_odds_multi(results)  # doctest: +SKIP
+    >>> fig_age = figs["age"]  # doctest: +SKIP
     """
     return _plot_multi_helper(
         equalized_odds_data,
@@ -558,9 +558,9 @@ def plot_fairness_gap_multi(
 
     Examples
     --------
-    >>> results = equalized_odds(y_true, y_pred, sensitive_features)
-    >>> figs = plot_fairness_gap_multi(results)
-    >>> fig_gender = figs["gender"]
+    >>> results = equalized_odds(y_true, y_pred, sensitive_features)  # doctest: +SKIP
+    >>> figs = plot_fairness_gap_multi(results)  # doctest: +SKIP
+    >>> fig_gender = figs["gender"]  # doctest: +SKIP
     """
     return _plot_multi_helper(
         equalized_odds_data,

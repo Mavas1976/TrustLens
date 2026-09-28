@@ -111,6 +111,9 @@ jobs:
       - name: Run tests with coverage
         run: |
           pytest tests/ --cov=trustlens --cov-report=xml --junitxml=junit.xml -v
+      - name: Run docstring examples
+        run: |
+          pytest trustlens --doctest-modules --import-mode=importlib -p no:cacheprovider -q
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
         if: runner.os == 'Linux'

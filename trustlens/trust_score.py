@@ -506,9 +506,9 @@ def compute_trust_score(
 
     Examples
     --------
-    >>> from trustlens.trust_score import compute_trust_score
-    >>> result = compute_trust_score(report.results)
-    >>> print(result.score, result.grade)  # e.g. 74 'B'
+    >>> from trustlens.trust_score import compute_trust_score  # doctest: +SKIP
+    >>> result = compute_trust_score(report.results)  # doctest: +SKIP
+    >>> print(result.score, result.grade)  # e.g. 74 'B'  # doctest: +SKIP
     """
     w = _validated_weights(weights, _DEFAULT_WEIGHTS)
 
@@ -876,9 +876,9 @@ def regression_trust_score(
 
     Examples
     --------
-    >>> from trustlens.trust_score import regression_trust_score
-    >>> result = regression_trust_score(report.results, report.y_true)
-    >>> print(result.score, result.grade)
+    >>> from trustlens.trust_score import regression_trust_score  # doctest: +SKIP
+    >>> result = regression_trust_score(report.results, report.y_true)  # doctest: +SKIP
+    >>> print(result.score, result.grade)  # doctest: +SKIP
     """
     reg = results.get("regression", results)
     error_dist = reg.get("error_distribution", {}) or {}

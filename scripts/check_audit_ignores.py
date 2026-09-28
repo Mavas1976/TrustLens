@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 LINE = re.compile(
-    r"^(?P<id>[A-Z]+-[0-9]{4}-[0-9]+)\s*\|\s*expires (?P<date>\d{4}-\d{2}-\d{2})\s*\|\s*(?P<reason>.*)$"
+    r"^(?P<id>[A-Z]+-[0-9]{4}-[0-9]+|GHSA(?:-[a-z0-9]{4}){3})\s*\|\s*expires (?P<date>\d{4}-\d{2}-\d{2})\s*\|\s*(?P<reason>.*)$"
 )
 
 

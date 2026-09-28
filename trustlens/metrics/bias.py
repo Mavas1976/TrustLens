@@ -55,8 +55,8 @@ def class_imbalance_report(y_true: np.ndarray) -> dict:
 
     Examples
     --------
-    >>> report = class_imbalance_report(y_true)
-    >>> print(f"Imbalance ratio: {report['imbalance_ratio']:.2f}x")
+    >>> report = class_imbalance_report(y_true)  # doctest: +SKIP
+    >>> print(f"Imbalance ratio: {report['imbalance_ratio']:.2f}x")  # doctest: +SKIP
     """
     y_true = np.asarray(y_true)
     classes, counts = np.unique(y_true, return_counts=True)
@@ -121,11 +121,11 @@ def subgroup_performance(
 
     Examples
     --------
-    >>> results = subgroup_performance(
+    >>> results = subgroup_performance(  # doctest: +SKIP
     ...   y_true, y_pred,
     ...   sensitive_features={"gender": gender_array},
     ... )
-    >>> print(results["gender"]["performance_gap"])
+    >>> print(results["gender"]["performance_gap"])  # doctest: +SKIP
     """
     if metrics is None:
         metrics = ["accuracy", "f1"]

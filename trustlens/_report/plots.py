@@ -164,8 +164,8 @@ class PlotMixin(ReportBase):
 
         Examples
         --------
-        >>> report.show_failures(top_k=10)
-        >>> report.show_failures(top_k=5, images=X_images)
+        >>> report.show_failures(top_k=10)  # doctest: +SKIP
+        >>> report.show_failures(top_k=5, images=X_images)  # doctest: +SKIP
         """
         self._require_classification("show_failures()")
         max_conf = self._max_confidence()

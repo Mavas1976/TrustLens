@@ -89,8 +89,8 @@ def error_distribution(
 
     Examples
     --------
-    >>> dist = error_distribution(y_true, y_pred)
-    >>> print(f"MedAE: {dist['median_absolute_error']}, p90: {dist['p90_absolute_error']}")
+    >>> dist = error_distribution(y_true, y_pred)  # doctest: +SKIP
+    >>> print(f"MedAE: {dist['median_absolute_error']}, p90: {dist['p90_absolute_error']}")  # doctest: +SKIP
     """
     y_true = np.asarray(y_true, dtype=float)
     y_pred = np.asarray(y_pred, dtype=float)
@@ -184,7 +184,12 @@ def prediction_interval_coverage(
 
     Examples
     --------
-    >>> prediction_interval_coverage(y_true, lo, hi, confidence_level=0.9)["picp"]
+    >>> import numpy as np
+    >>> y_true = np.array([1.0, 2.0, 3.0, 4.0])
+    >>> lo = np.array([0.5, 1.5, 3.5, 3.0])
+    >>> hi = np.array([1.5, 2.5, 4.0, 5.0])
+    >>> float(prediction_interval_coverage(y_true, lo, hi, confidence_level=0.9)["picp"])
+    0.75
     """
     if lower is None or upper is None:
         return {
@@ -307,8 +312,8 @@ def multilevel_interval_coverage(
 
     Examples
     --------
-    >>> ivs = {0.5: (lo50, hi50), 0.9: (lo90, hi90)}
-    >>> multilevel_interval_coverage(y_true, ivs)["ice"]
+    >>> ivs = {0.5: (lo50, hi50), 0.9: (lo90, hi90)}  # doctest: +SKIP
+    >>> multilevel_interval_coverage(y_true, ivs)["ice"]  # doctest: +SKIP
     """
     if not intervals:
         return {
@@ -541,8 +546,8 @@ def crps_from_intervals(
 
     Examples
     --------
-    >>> ivs = {0.5: (lo50, hi50), 0.8: (lo80, hi80), 0.95: (lo95, hi95)}
-    >>> crps_from_intervals(y_true, ivs)["mean_crps"]
+    >>> ivs = {0.5: (lo50, hi50), 0.8: (lo80, hi80), 0.95: (lo95, hi95)}  # doctest: +SKIP
+    >>> crps_from_intervals(y_true, ivs)["mean_crps"]  # doctest: +SKIP
     """
     if not intervals:
         return {
@@ -715,9 +720,9 @@ def crps_decomposition(
 
     Examples
     --------
-    >>> ivs = {0.5: (lo50, hi50), 0.8: (lo80, hi80), 0.95: (lo95, hi95)}
-    >>> d = crps_decomposition(y_true, ivs)
-    >>> d["reliability"], d["resolution"], d["uncertainty"]
+    >>> ivs = {0.5: (lo50, hi50), 0.8: (lo80, hi80), 0.95: (lo95, hi95)}  # doctest: +SKIP
+    >>> d = crps_decomposition(y_true, ivs)  # doctest: +SKIP
+    >>> d["reliability"], d["resolution"], d["uncertainty"]  # doctest: +SKIP
     """
     if not intervals:
         return {
@@ -836,7 +841,7 @@ def error_variance_correlation(
 
     Examples
     --------
-    >>> error_variance_correlation(y_true, y_pred, variance)["spearman"]
+    >>> error_variance_correlation(y_true, y_pred, variance)["spearman"]  # doctest: +SKIP
     """
     if predicted_variance is None:
         return {

@@ -86,8 +86,8 @@ def embedding_separability(
 
     Examples
     --------
-    >>> sep = embedding_separability(embeddings, y_true)
-    >>> print(f"Silhouette: {sep['silhouette_score']:.3f}")
+    >>> sep = embedding_separability(embeddings, y_true)  # doctest: +SKIP
+    >>> print(f"Silhouette: {sep['silhouette_score']:.3f}")  # doctest: +SKIP
     """
     embeddings = np.asarray(embeddings, dtype=float)
     y_true = np.asarray(y_true)
@@ -190,8 +190,8 @@ def centered_kernel_alignment(
 
     Examples
     --------
-    >>> cka = centered_kernel_alignment(layer1_embeddings, layer2_embeddings)
-    >>> print(f"CKA similarity: {cka:.3f}")
+    >>> cka = centered_kernel_alignment(layer1_embeddings, layer2_embeddings)  # doctest: +SKIP
+    >>> print(f"CKA similarity: {cka:.3f}")  # doctest: +SKIP
     """
     X = np.asarray(X, dtype=float)
     Y = np.asarray(Y, dtype=float)

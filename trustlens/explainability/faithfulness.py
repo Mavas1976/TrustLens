@@ -80,8 +80,8 @@ def pixel_deletion_test(
 
     Examples
     --------
-    >>> result = pixel_deletion_test(img, saliency, predict_fn, target_class=0)
-    >>> print(f"AUPC (deletion): {result['aupc']:.4f}")
+    >>> result = pixel_deletion_test(img, saliency, predict_fn, target_class=0)  # doctest: +SKIP
+    >>> print(f"AUPC (deletion): {result['aupc']:.4f}")  # doctest: +SKIP
     """
     image = np.asarray(image, dtype=float)
     saliency = np.asarray(saliency_map, dtype=float)
@@ -172,8 +172,8 @@ def pixel_insertion_test(
 
     Examples
     --------
-    >>> result = pixel_insertion_test(img, saliency, predict_fn, target_class=0)
-    >>> print(f"AUPC (insertion): {result['aupc']:.4f}")
+    >>> result = pixel_insertion_test(img, saliency, predict_fn, target_class=0)  # doctest: +SKIP
+    >>> print(f"AUPC (insertion): {result['aupc']:.4f}")  # doctest: +SKIP
     """
     image = np.asarray(image, dtype=float)
     saliency = np.asarray(saliency_map, dtype=float)
