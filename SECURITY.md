@@ -8,7 +8,7 @@ We actively support the latest version of TrustLens. Please keep your installati
 | ------- | ------------------ |
 | 0.5.x | :white_check_mark: Yes |
 | 0.4.x | :white_check_mark: Yes |
-| < 0.3.x | :x: No              |
+| < 0.4 | :x: No              |
 
 ## Reporting a Vulnerability
 
@@ -16,8 +16,8 @@ We actively support the latest version of TrustLens. Please keep your installati
 
 We take the security of TrustLens seriously. If you discover a potential security vulnerability, please report it responsibly using one of the following methods:
 
-1. **GitHub Security Advisory:** Submit a [Private Vulnerability Report](https://github.com/TrustLens/TrustLens/security/advisories/new) via the Security tab (if enabled).
-2. **Email:** Contact the maintainers directly at `[SHAHID9664@GMAIL.COM]`.
+1. **GitHub Security Advisory:** Submit a [Private Vulnerability Report](https://github.com/Khanz9664/TrustLens/security/advisories/new) via the Security tab (if enabled).
+2. **Email:** Contact the maintainers directly at `shahid9664@gmail.com`.
 
 ### Please include the following in your report:
 *   A detailed description of the vulnerability.

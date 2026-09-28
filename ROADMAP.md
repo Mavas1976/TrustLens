@@ -1,6 +1,6 @@
 # TrustLens Roadmap
 
-> Last updated: May 2026
+> Last updated: September 2026
 > This roadmap reflects our current priorities. Community feedback shapes every phase.
 
 ---
@@ -9,7 +9,7 @@
 
 - ✅ Stable ML evaluation pipeline (calibration, failure, bias, representation)
 - ✅ Head-to-head model comparison API (`trustlens.compare`)
-- ✅ Decision-ready Trust Score with penalty reasoning
+- ✅ Decision-ready Trust Score (methodology 2.0: sub-scores, blockers and caps; see ADR-001)
 - ✅ Framework-agnostic prediction resolver architecture (XGBoost, LightGBM, CatBoost)
 - ✅ Scientific Validation: Model Zoo Benchmark for accuracy/trust decoupling
 - ✅ Professional contributor infrastructure and documentation
@@ -34,7 +34,7 @@ These are high-priority items currently being developed or targeted for the next
 - [x] **Model Zoo Benchmark** — *Scientific validation of trust diagnostics*
 - [~] **Deep Learning Backends** — *Experimental Keras & TensorFlow integration*
 - [~] **HTML Report Export** (Issue #19) — *[OPEN]*
-- [ ] **Maximum Calibration Error (MCE)** (Issue #1)
+- [x] **Maximum Calibration Error (MCE)** (Issue #1)
 
 ---
 
@@ -74,7 +74,7 @@ The minimal set of features required to be genuinely useful to practitioners.
 - [x] **Subgroup ECE** (calibration per demographic group)
 - [~] **HTML Report Export** (Issue #19) — [OPEN]
 - [ ] **Temperature Scaling** (Issue #18)
-- [ ] **Maximum Calibration Error (MCE)** (Issue #1)
+- [x] **Maximum Calibration Error (MCE)** (Issue #1)
 
 ### Nice to Have
 - [ ] **Multi-class ECE** (label-wise decomposition)

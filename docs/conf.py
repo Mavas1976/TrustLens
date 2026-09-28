@@ -50,6 +50,8 @@ exclude_patterns = [
     "_build",
     "Thumbs.db",
     ".DS_Store",
+    # Maintainer checklist, not user documentation.
+    "RELEASE_CHECKLIST.md",
 ]
 
 # -- Options for HTML output -------------------------------------------------

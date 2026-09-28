@@ -11,6 +11,7 @@ This page provides the technical documentation for all public components of Trus
    metrics/failure
    metrics/representation
    metrics/regression
+   metrics/conformal
 ```
 
 ---
@@ -20,6 +21,32 @@ This page provides the technical documentation for all public components of Trus
 ### `trustlens.analyze`
 ```{eval-rst}
 .. autofunction:: trustlens.api.analyze
+```
+
+### `trustlens.quick_analyze`
+```{eval-rst}
+.. autofunction:: trustlens.api.quick_analyze
+```
+
+### `trustlens.compare`
+```{eval-rst}
+.. autofunction:: trustlens.comparison.compare
+```
+
+### `trustlens.compute_trust_score`
+```{eval-rst}
+.. autofunction:: trustlens.trust_score.compute_trust_score
+```
+
+### `trustlens.regression_trust_score`
+```{eval-rst}
+.. autofunction:: trustlens.trust_score.regression_trust_score
+```
+
+### Results contract
+```{eval-rst}
+.. automodule:: trustlens.results_schema
+   :members: check_results_contract
 ```
 
 ### `trustlens.TrustReport`

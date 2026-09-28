@@ -13,9 +13,7 @@
 [![PyPI](https://badge.fury.io/py/trustlens.svg)](https://pypi.org/project/trustlens/)
 [![Downloads](https://img.shields.io/pypi/dm/trustlens)](https://pypi.org/project/trustlens)
 [![CI](https://github.com/Khanz9664/TrustLens/actions/workflows/ci.yml/badge.svg)](https://github.com/Khanz9664/TrustLens/actions)
-[![Coverage](https://img.shields.io/badge/coverage-75%25-brightgreen)](https://github.com/Khanz9664/TrustLens)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-237%20passing-success)](https://github.com/Khanz9664/TrustLens/actions)
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg?style=flat)](https://khanz9664.github.io/trustlensdocs/)
 
 <br/>
