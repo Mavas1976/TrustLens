@@ -91,6 +91,7 @@ dev = [
     "twine>=5.0",
     "pip-audit>=2.7",
     "pytest-xdist>=3.0",
+    "pandas>=1.5",
 ]
 docs = [
     "sphinx>=6.0",

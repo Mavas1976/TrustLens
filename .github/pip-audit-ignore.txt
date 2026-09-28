@@ -1,0 +1,28 @@
+# pip-audit ignore list (TL-24).
+#
+# Format: <vulnerability id> | expires <YYYY-MM-DD> | <reason>
+# scripts/check_audit_ignores.py fails CI when an entry has no reason or has
+# expired, so every ignore is re-reviewed instead of accumulating silently.
+#
+# The entries below were inherited from the v0.5.0 CI, where they were
+# described only as "environment-specific pip vulnerabilities (upstream
+# issues)". They have not been reviewed individually yet; the expiry forces
+# that review. Replace the reason with the concrete justification (affected
+# package, why it does not apply, upstream fix status) when renewing.
+CVE-2025-8869 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
+CVE-2026-1703 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
+CVE-2026-3219 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
+CVE-2026-6357 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
+CVE-2025-3000 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
+PYSEC-2024-277 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
+PYSEC-2025-210 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
+PYSEC-2025-194 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
+PYSEC-2025-196 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
+PYSEC-2025-195 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
+PYSEC-2025-193 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
+PYSEC-2025-192 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
+PYSEC-2026-139 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
+PYSEC-2025-191 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
+PYSEC-2025-197 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
+PYSEC-2025-189 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
+PYSEC-2025-190 | expires 2026-12-31 | inherited from v0.5.0 CI; described as environment-specific/upstream; not yet reviewed
