@@ -97,6 +97,8 @@ def compare(
         names = [f"{c} #{i + 1}" if classes.count(c) > 1 else c for i, c in enumerate(classes)]
     elif len(names) != len(reports):
         raise ValueError(f"names has {len(names)} entries for {len(reports)} reports.")
+    if len(set(names)) != len(names):
+        raise ValueError(f"names must be unique; got {names}.")
 
     print("========== Model Comparison & Recommendation ==========")
     for name, rep in zip(names, reports):
@@ -125,6 +127,13 @@ def compare(
                 "grade": rep.trust_score.grade,
                 "weakest_dimension": weakest,
             }
+        )
+
+    if len(eligible) > 1 and eligible[0][1].trust_score.score == eligible[1][1].trust_score.score:
+        tied = [n for n, r in eligible if r.trust_score.score == eligible[0][1].trust_score.score]
+        result["warnings"].append(
+            f"Tie at {eligible[0][1].trust_score.score}/100 between {tied}; the recommendation "
+            "follows input order. Compare their sub-scores before choosing."
         )
 
     dimension_sets = {tuple(sorted(r.trust_score.sub_scores)) for _, r in eligible}

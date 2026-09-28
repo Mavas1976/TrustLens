@@ -335,3 +335,27 @@ def test_no_skill_is_detectable_without_probabilities():
     report = analyze(None, None, y, y_pred=np.zeros_like(y), verbose=False)
     assert report.trust_score.is_blocked
     assert report.trust_score.grade == "D"
+
+
+def test_compare_rejects_duplicate_names_and_flags_ties():
+    """Review F11."""
+    from trustlens import compare
+
+    y, y_pred, y_prob = _calibrated_binary(2000, 8.0)
+    a = analyze(None, None, y, y_pred=y_pred, y_prob=y_prob, verbose=False)
+    b = analyze(None, None, y, y_pred=y_pred, y_prob=y_prob, verbose=False)
+    with pytest.raises(ValueError, match="unique"):
+        compare([a, b], names=["m", "m"])
+    result = compare([a, b], names=["first", "second"])
+    assert any("Tie" in w for w in result["warnings"])
+
+
+def test_not_assessed_report_text_is_consistent():
+    """Review F8: an N/A report must not claim excellent calibration or critical issues."""
+    y, y_pred, _ = _calibrated_binary(2000, 8.0)
+    report = analyze(None, None, y, y_pred=y_pred, verbose=False)
+    text = report._generate_text_report()
+    assert "Not assessed" in text
+    assert "capped at grade C" not in text
+    assert "Calibration quality is excellent" not in text
+    assert "critical issues" not in text

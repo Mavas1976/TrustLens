@@ -6,6 +6,7 @@
         "ece": 0.09399999999999999,
         "mce": 0.4000000000000001,
         "overconfidence_error": 0.005,
+        "n_samples": 100,
         "reliability_curve": [
           [
             0.043478260869565216,
@@ -280,6 +281,7 @@
         "ece": 0.07959529043880662,
         "mce": 0.4564137329001824,
         "overconfidence_error": 0.0229415014,
+        "n_samples": 100,
         "reliability_curve": [
           [
             0.0,

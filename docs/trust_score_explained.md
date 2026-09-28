@@ -72,8 +72,8 @@ must use these keys and be non-negative.
 ### Blockers (grade D, score ≤ 39)
 
 **Classification:**
-- No predictive skill: accuracy does not beat the majority-class baseline.
-- Overconfidence: overconfidence error (the part of top-label ECE where confidence exceeds accuracy) above 0.10. Underconfidence lowers the calibration sub-score but does not block.
+- No predictive skill: accuracy does not beat the majority-class baseline *and* confidence carries little information about errors (error-detection AUROC below 0.6, or no probabilities). Not applied when `y_true` has a single class. If confidence does separate errors (for example a calibrated rare-event model whose scores never cross 0.5), the result is capped at C with a "review the decision threshold" note instead.
+- Overconfidence: overconfidence error (the part of top-label ECE where confidence exceeds accuracy) above 0.10, on at least 100 samples. Below 100 samples the estimate is too noisy (about 20% false alarms at n = 30 for a perfectly calibrated model), so it caps at C instead. Underconfidence lowers the calibration sub-score but does not block.
 - Severe fairness violation: a fairness gap above 0.15.
 
 **Regression:**
@@ -84,6 +84,19 @@ must use these keys and be non-negative.
 
 - **Incomplete assessment** (`is_partial`): calibration or failure was not assessed, for example without `y_prob` or with a `modules=` subset.
 - **Weak dimension**: any assessed sub-score below 40.
+
+Top-label measures (multiclass ECE, overconfidence error, error-detection
+AUROC) all treat a prediction as correct when `y_pred == y_true` and use
+`max(y_prob)` as its confidence. A warning is logged when `y_pred` differs from
+`argmax(y_prob)` for more than 1% of samples. Binary calibration is scored with
+the positive-class ECE, the standard binary definition. It is numerically close
+to, but not identical with, the top-label ECE used for multiclass.
+
+Results saved before methodology 2.0 lack the error-detection AUROC and the
+overconfidence error. Scoring them warns, falls back to the normalised
+confidence gap for the failure sub-score, cannot apply the overconfidence
+blocker, and sets `score_version` to `2.0-legacy-input`. Re-run `analyze()` for
+a full 2.0 score.
 
 When no dimension can be scored at all (no probabilities, no sensitive
 features, no embeddings) and no blocker applies, the grade is **N/A** and the

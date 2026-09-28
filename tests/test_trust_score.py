@@ -16,6 +16,11 @@ from trustlens.trust_score import (
     compute_trust_score,
 )
 
+# The fixtures below are results dicts in the pre-2.0 shape (no error-detection
+# AUROC or overconfidence error), so they exercise the legacy-input path, which
+# warns by design (see tests/invariants/test_formula_contract.py).
+pytestmark = pytest.mark.filterwarnings("ignore:Scoring results saved before")
+
 # ---------------------------------------------------------------------------
 # Fixtures — representative results dicts
 # ---------------------------------------------------------------------------

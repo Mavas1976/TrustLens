@@ -348,6 +348,8 @@ class TrustReport:
         for blocker in getattr(ts, "blockers", []) or []:
             reasons.insert(0, {"status": "fail", "message": blocker})
         for cap in getattr(ts, "caps_applied", []) or []:
+            if ts.grade == "N/A":
+                cap = cap.replace(" (capped at grade C)", "")
             reasons.append({"status": "fail", "message": cap})
 
         return {
@@ -415,13 +417,8 @@ class TrustReport:
             [f"{k.capitalize()} ({int(v * 100)}%)" for k, v in ts.weights_used.items()]
         )
         print(f"  Formula     : {weights_str}")
-        print("  Definitions :")
-        print("    - Failure Score     : Reflects confidence-weighted errors, not raw error rate.")
-        print(
-            "    - Calibration       : Measures probability reliability via Expected Calibration Error (ECE)."
-        )
-        print("    - Fairness Margin   : Distance from the acceptable disparity threshold (0.10).")
-        print("    - Penalties         : Deductions applied for critical diagnostic risks.")
+        for line in _methodology_lines(ts):
+            print(line)
 
     def _max_confidence(self) -> np.ndarray:
         """Return per-sample max predicted confidence."""
@@ -678,17 +675,7 @@ class TrustReport:
             [f"{k.capitalize()} ({int(v * 100)}%)" for k, v in ts.weights_used.items()]
         )
         lines.append(f"  Formula     : {weights_str}")
-        lines.append("  Definitions :")
-        lines.append(
-            "    - Failure Score     : Reflects confidence-weighted errors, not raw error rate."
-        )
-        lines.append(
-            "    - Calibration       : Measures probability reliability via Expected Calibration Error (ECE)."
-        )
-        lines.append(
-            "    - Fairness Margin   : Distance from the acceptable disparity threshold (0.10)."
-        )
-        lines.append("    - Penalties         : Deductions applied for critical diagnostic risks.")
+        lines.extend(_methodology_lines(ts))
         return "\n".join(lines)
 
     def _get_module_text_lines(
@@ -720,53 +707,28 @@ class TrustReport:
                 buf.append(f"{prefix}- {data}")
 
     def _generate_conclusion(self) -> str:
-        """Generate a short 1-2 line conclusion based on the scores."""
-        failure_score = self.trust_score.sub_scores.get("failure", 100.0)
-        ece = self.results.get("calibration", {}).get("ece", 0.0)
-        conf_gap = self.results.get("failure", {}).get("confidence_gap", {}).get("gap", 0.0)
-
-        # Cross-dimension pattern check
-        is_confidently_wrong = failure_score < 50 and ece > 0.15 and conf_gap < 0.05
-
-        # Fairness risk check
-        bias_has_severe_violation = False
-        bias_module = self.results.get("bias", {})
-        for feat_data in bias_module.get("subgroup_performance", {}).values():
-            if (feat_data.get("__summary__", {}).get("performance_gap") or 0.0) > 0.15:
-                bias_has_severe_violation = True
-                break
-        if not bias_has_severe_violation:
-            for val in bias_module.get("equalized_odds", {}).values():
-                if not isinstance(val, dict):
-                    continue
-                summary = val.get("__summary__", {})
-                if (
-                    summary.get("tpr_violation") == "severe"
-                    or summary.get("fpr_violation") == "severe"
-                ):
-                    bias_has_severe_violation = True
-                    break
-
-        if is_confidently_wrong:
+        """Generate a short 1-2 line conclusion that follows the Trust Score verdict."""
+        ts = self.trust_score
+        if ts.grade == "N/A":
             return (
-                "Model exhibits 'confidently wrong' behavior and high failure risk. Do not deploy."
+                "Not assessed: no trust dimension could be scored. Supply predicted "
+                "probabilities (y_prob) and, for fairness, sensitive_features."
             )
-        if failure_score < 40:
-            return "Model shows high failure risk and is not ready for deployment."
-        if bias_has_severe_violation:
-            return "Model exhibits severe fairness violations and is not ready for deployment."
-        if ece > 0.1:
-            return "Model requires calibration before deployment."
-
-        grade = self.trust_score.grade
-        if grade == "A":
-            return "Model demonstrates strong reliability across all measured dimensions. Ready for production."
-        elif grade == "B":
+        blockers = getattr(ts, "blockers", []) or []
+        if blockers:
+            return f"Do not deploy. {blockers[0]}."
+        if getattr(ts, "is_partial", False):
+            missing = ", ".join(getattr(ts, "missing_dimensions", []) or [])
+            return f"Incomplete assessment ({missing} not assessed). Complete it before deciding."
+        if ts.grade == "A":
+            return "No critical issues detected across the measured dimensions."
+        if ts.grade == "B":
             return "Model is generally reliable, but minor issues should be addressed before broad deployment."
-        elif grade == "C":
-            return "Model shows moderate risk. Investigate flagged dimensions (e.g., calibration or bias) before proceeding."
-        else:
-            return "Model exhibits critical issues and should not be deployed until fundamental problems are resolved."
+        if ts.grade == "C":
+            return (
+                "Model shows moderate risk. Investigate the flagged dimensions before proceeding."
+            )
+        return "Model exhibits critical issues and should not be deployed until fundamental problems are resolved."
 
     def _generate_insights(self) -> list[str]:
         """Generate plain-text insights based on results."""
@@ -804,7 +766,9 @@ class TrustReport:
         cal_score = self.trust_score.sub_scores.get("calibration", 100.0)
 
         # Check Calibration
-        if "calibration" in self.results:
+        # Only comment on dimensions that were actually scored (skipped modules
+        # have no calibration or confidence evidence).
+        if "calibration" in self.trust_score.sub_scores:
             if not is_confidently_wrong:
                 if cal_score < 75:
                     add_insight(
@@ -847,7 +811,7 @@ class TrustReport:
                     2,
                 )
 
-        if "failure" in self.results and not is_confidently_wrong:
+        if "failure" in self.trust_score.sub_scores and not is_confidently_wrong:
             if conf_gap < 0.05:
                 add_insight(
                     "Warning: Model is overconfident on incorrect predictions (low confidence gap).",
@@ -2067,6 +2031,19 @@ class TrustReport:
 # ---------------------------------------------------------------------------
 
 
+def _methodology_lines(ts: Any) -> list[str]:
+    """Definitions printed under the score formula (methodology 2.0)."""
+    return [
+        f"  Method      : Trust Score methodology {getattr(ts, 'score_version', '1.x')}",
+        "  Definitions :",
+        "    - Calibration : 100 x (1 - ECE / 0.25)",
+        "    - Failure     : error-detection AUROC of confidence (80%) + accuracy (20%)",
+        "    - Bias        : 100 x (1 - largest fairness gap / 0.30), with sensitive features only",
+        "    - Blockers    : no skill, overconfidence > 0.10, fairness gap > 0.15 (grade D)",
+        "    - Caps        : incomplete assessment or a sub-score below 40 (grade C)",
+    ]
+
+
 def _score_summary_lines(ts: Any) -> list[str]:
     """Explain how the reported score was reached.
 
@@ -2088,6 +2065,8 @@ def _score_summary_lines(ts: Any) -> list[str]:
         return []
     lines = ["\nScore Summary:", f"  Weighted Score    : {ts.base_score}"]
     lines.extend(f"  Blocker           : {b}" for b in blockers)
+    if ts.grade == "N/A":
+        caps = [c.replace(" (capped at grade C)", "") for c in caps]
     lines.extend(f"  Cap               : {c}" for c in caps)
     lines.append(f"  Final Score       : {ts.score}")
     return lines

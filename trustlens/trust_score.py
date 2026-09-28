@@ -108,6 +108,12 @@ _BIAS_GAP_AT_ZERO = 0.30
 # score could otherwise average away.
 _BLOCK_OVERCONFIDENCE = 0.10  # overconfidence error (top-label)
 _BLOCK_FAIRNESS_GAP = 0.15  # equals the "severe" level of the fairness metrics
+# No-skill blocker only when confidence also carries little information about
+# errors; otherwise the decision threshold, not the model, is the problem.
+_NO_SKILL_AUROC = 0.6
+# Below this many samples the overconfidence error is too noisy to block on
+# (P(OCE > 0.10) ≈ 0.2 at n = 30 for a perfectly calibrated model).
+_MIN_SAMPLES_OVERCONFIDENCE = 100
 
 # Score caps keep the number consistent with the grade band.
 _BLOCKED_SCORE_CAP = 39  # grade D
@@ -444,6 +450,41 @@ def _validated_weights(weights: dict[str, float] | None, defaults: dict[str, flo
     return w
 
 
+def _skill_inputs(
+    results: dict, failure: dict, calibration: dict, sub_scores: dict
+) -> tuple[float | None, float | None, bool]:
+    """Return (accuracy, majority baseline, legacy_input) for the blockers.
+
+    Results saved before methodology 2.0 lack the error-detection AUROC, the
+    overconfidence error and the accuracy/baseline pair. Accuracy and baseline
+    are then rebuilt from the error rate and the class frequencies, and the
+    caller marks the score as computed from legacy input (review F4).
+    """
+    legacy = ("failure" in sub_scores and "confidence_auroc" not in failure) or (
+        "calibration" in sub_scores and "overconfidence_error" not in calibration
+    )
+    accuracy = failure.get("accuracy")
+    baseline = failure.get("baseline_accuracy")
+    if accuracy is None:
+        error_rate = failure.get("misclassification_summary", {}).get("__overall__", {})
+        if error_rate.get("overall_error_rate") is not None:
+            accuracy = 1.0 - float(error_rate["overall_error_rate"])
+    if baseline is None:
+        freqs = (results.get("bias") or {}).get("class_imbalance", {}).get("class_frequencies")
+        if freqs:
+            baseline = float(max(freqs.values()))
+    if legacy:
+        warnings.warn(
+            "Scoring results saved before Trust Score methodology 2.0: the error-detection "
+            "AUROC and/or overconfidence error are missing, so the failure sub-score uses the "
+            "confidence-gap fallback and the overconfidence blocker cannot fire. Re-run "
+            "analyze() for a full 2.0 score.",
+            UserWarning,
+            stacklevel=3,
+        )
+    return accuracy, baseline, legacy
+
+
 def compute_trust_score(
     results: dict,
     weights: dict[str, float] | None = None,
@@ -496,25 +537,52 @@ def compute_trust_score(
 
     # 2. Weighted mean over the assessed dimensions
     weights_used = _redistribute(w, [d for d in w if d in sub_scores])
+    if sub_scores and not weights_used:
+        raise ValueError(
+            f"All assessed dimensions {sorted(sub_scores)} have weight 0; give at least one "
+            "of them a positive weight."
+        )
     raw_score = sum(sub_scores[d] * weights_used[d] for d in weights_used)
+
+    failure_raw = results.get("failure")
+    calibration_raw = results.get("calibration")
+    failure: dict = failure_raw if isinstance(failure_raw, dict) else {}
+    calibration: dict = calibration_raw if isinstance(calibration_raw, dict) else {}
+    accuracy, baseline, legacy_input = _skill_inputs(results, failure, calibration, sub_scores)
 
     # 3. Blockers: critical signals that must not be averaged away
     blockers: list[str] = []
-    failure = results.get("failure", {}) if isinstance(results.get("failure"), dict) else {}
-    accuracy = failure.get("accuracy")
-    baseline = failure.get("baseline_accuracy")
-    if accuracy is not None and baseline is not None and accuracy <= baseline:
-        blockers.append(
-            f"Blocked by no predictive skill (accuracy {accuracy:.3f} does not beat "
-            f"the majority-class baseline {baseline:.3f})"
-        )
-    calibration = results.get("calibration", {})
-    oce = calibration.get("overconfidence_error") if isinstance(calibration, dict) else None
+    caps: list[str] = []
+    auroc = failure.get("confidence_auroc")
+    if accuracy is not None and baseline is not None and baseline < 1.0 and accuracy <= baseline:
+        # With a single class in y_true every correct model "ties" the baseline,
+        # so the check needs at least two classes (baseline < 1).
+        if auroc is None or float(auroc) < _NO_SKILL_AUROC:
+            blockers.append(
+                f"Blocked by no predictive skill (accuracy {accuracy:.3f} does not beat "
+                f"the majority-class baseline {baseline:.3f})"
+            )
+        else:
+            # Confidence still ranks errors (e.g. a calibrated rare-event model
+            # whose scores never cross 0.5): the decisions lack skill, the model
+            # may not. Flag, do not block.
+            caps.append(
+                f"Decisions do not beat the majority-class baseline (accuracy {accuracy:.3f} "
+                f"vs {baseline:.3f}); review the decision threshold (capped at grade C)"
+            )
+    oce = calibration.get("overconfidence_error")
     if oce is not None and float(oce) > _BLOCK_OVERCONFIDENCE:
-        blockers.append(
-            f"Blocked by overconfidence (overconfidence error {float(oce):.3f} "
-            f"> {_BLOCK_OVERCONFIDENCE})"
-        )
+        n_cal = calibration.get("n_samples")
+        if n_cal is not None and int(n_cal) < _MIN_SAMPLES_OVERCONFIDENCE:
+            caps.append(
+                f"Overconfidence error {float(oce):.3f} > {_BLOCK_OVERCONFIDENCE} on only "
+                f"{int(n_cal)} samples (low support; capped at grade C)"
+            )
+        else:
+            blockers.append(
+                f"Blocked by overconfidence (overconfidence error {float(oce):.3f} "
+                f"> {_BLOCK_OVERCONFIDENCE})"
+            )
     fairness_gaps = _fairness_gaps(results.get("bias", {}) or {})
     if fairness_gaps and max(fairness_gaps) > _BLOCK_FAIRNESS_GAP:
         blockers.append(
@@ -523,12 +591,12 @@ def compute_trust_score(
         )
 
     # 4. Caps: an incomplete assessment or a very weak dimension cannot pass
-    caps: list[str] = []
     if is_partial:
-        caps.append(
+        caps.insert(
+            0,
             "Incomplete assessment, not assessed: "
             + ", ".join(missing_dimensions)
-            + " (capped at grade C)"
+            + " (capped at grade C)",
         )
     weak = sorted(d for d, s in sub_scores.items() if s < _WEAK_DIMENSION)
     if weak:
@@ -559,6 +627,7 @@ def compute_trust_score(
         missing_dimensions=missing_dimensions,
         blockers=blockers,
         caps_applied=caps,
+        score_version=f"{SCORE_VERSION}-legacy-input" if legacy_input else SCORE_VERSION,
     )
 
 

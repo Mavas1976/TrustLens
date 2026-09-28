@@ -73,7 +73,9 @@ Decided after the interim rules above. The formulas are in
 | Calibration dimension | Scored from ECE (`100 × clip(1 − ECE/0.25)`). Brier is reported but no longer scored, because the multiclass Brier range grows with K and mixes accuracy into calibration. | TL-05 |
 | Failure dimension | Scored from the error-detection AUROC of top-label confidence plus 20% accuracy. AUROC does not shrink with K or with accuracy, unlike the mean confidence gap. | TL-01 |
 | One mechanism per signal | No additive penalties. Each metric counts once, in its sub-score. `penalties_applied` stays empty for compatibility. The regression weak-correlation penalty is removed for the same reason. | TL-09 |
-| Blockers | Override the weighted score (AH-35): no predictive skill (accuracy not above the majority baseline), overconfidence error > 0.10, a fairness gap > 0.15, and the two existing regression blockers. Underconfidence does not block. | TL-09 |
+| Blockers | Override the weighted score (AH-35): no predictive skill (accuracy not above the majority baseline while the error-detection AUROC is below 0.6 or unknown; never for a single-class `y_true`), overconfidence error > 0.10 on at least 100 samples, a fairness gap > 0.15, and the two existing regression blockers. Underconfidence does not block. Where the evidence is weaker (confidence still ranks errors, or n < 100), the same condition caps at C instead. | TL-09, review F1–F3 |
+| Legacy input | Results without the 2.0 inputs warn and are scored with `score_version = "2.0-legacy-input"`. | review F4 |
+| Correctness definition | All top-label measures use `y_pred == y_true` with confidence `max(y_prob)`. A warning is logged when `y_pred` differs from the argmax. | review F5 |
 | Score and grade | Always consistent. Blocked results are capped at 39 (D), capped results at 59 (C). `base_score` keeps the uncapped weighted score. | TL-02, TL-03 |
 | Caps | Partial assessment, or any assessed sub-score below 40. | TL-03 |
 | Nothing assessable | Grade `N/A`, deployment verdict `INSUFFICIENT_EVIDENCE`, unless a blocker applies. | TL-02 |
@@ -88,6 +90,12 @@ The reference model `wine · RandomForest` is 100% accurate but underconfident
 blocker.
 
 ### 5. Open questions
+
+- The package version is still 0.5.0 while the scores follow methodology 2.0.
+  `score_version` identifies the methodology. Bump the package version when
+  releasing (a maintainer decision).
+- The example notebooks (`examples/*.ipynb`) still describe penalties from 1.x
+  in their stored outputs. They need re-running under 2.0.
 
 - Regression point-only reports score on accuracy alone (RFC #145) and are not
   marked partial. Revisit this if users read such scores as complete.

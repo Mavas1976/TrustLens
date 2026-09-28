@@ -103,7 +103,6 @@ def test_bias_not_scored_without_sensitive_features():
 @pytest.mark.parametrize(
     ("kwargs", "fragment"),
     [
-        ({"accuracy": 0.6, "baseline": 0.6}, "no predictive skill"),
         ({"oce": 0.11}, "overconfidence"),
         ({"gaps": 0.16}, "fairness"),
     ],
@@ -151,3 +150,47 @@ def test_custom_weights_are_validated():
         compute_trust_score(results, weights={"calibration": -0.5})
     ts = compute_trust_score(results, weights={"calibration": 1.0, "failure": 1.0})
     assert ts.weights_used == pytest.approx({"calibration": 0.5, "failure": 0.5})
+
+
+def test_no_skill_blocks_when_confidence_is_uninformative():
+    ts = compute_trust_score(_results(0.02, 0.55, 0.4, accuracy=0.6, baseline=0.6))
+    assert ts.is_blocked and any("no predictive skill" in b for b in ts.blockers)
+
+
+def test_no_skill_with_informative_confidence_is_capped_not_blocked():
+    """Review F2: a calibrated rare-event model whose scores never cross 0.5."""
+    ts = compute_trust_score(_results(0.02, 0.77, 0.185, accuracy=0.815, baseline=0.815))
+    assert not ts.is_blocked
+    assert ts.grade == "C" and any("decision threshold" in c for c in ts.caps_applied)
+
+
+def test_single_class_evaluation_set_is_not_no_skill():
+    """Review F1: with one class every correct model ties the baseline of 1.0."""
+    ts = compute_trust_score(_results(0.02, None, 0.0, accuracy=1.0, baseline=1.0))
+    assert not ts.is_blocked
+
+
+def test_overconfidence_on_small_sample_is_capped_not_blocked():
+    """Review F3: the overconfidence error is too noisy to block on below n = 100."""
+    results = _results(0.02, 0.95, 0.05, oce=0.15)
+    results["calibration"]["n_samples"] = 40
+    ts = compute_trust_score(results)
+    assert not ts.is_blocked and ts.grade == "C"
+    results["calibration"]["n_samples"] = 400
+    assert compute_trust_score(results).is_blocked
+
+
+def test_legacy_results_are_flagged():
+    """Review F4: v0.5.0 results lack the 2.0 inputs; the score says so."""
+    results = _results(0.02, 0.9, 0.1)
+    del results["failure"]["confidence_auroc"]
+    del results["calibration"]["overconfidence_error"]
+    with pytest.warns(UserWarning, match="before Trust Score methodology 2.0"):
+        ts = compute_trust_score(results)
+    assert ts.score_version == "2.0-legacy-input"
+
+
+def test_zero_weight_on_every_assessed_dimension_is_rejected():
+    """Review F7."""
+    with pytest.raises(ValueError, match="weight 0"):
+        compute_trust_score(_results(0.02, 0.9, 0.1), weights={"calibration": 0.0, "failure": 0.0})
