@@ -126,7 +126,14 @@ def _run_analysis_pipeline(
     # 1. Determine which modules to run
     # ------------------------------------------------------------------
     _ALL_MODULES = ["calibration", "failure", "bias", "representation"]
-    active_modules = modules or _ALL_MODULES
+    unknown_modules = [m for m in (modules or []) if m not in _ALL_MODULES]
+    if unknown_modules:
+        raise ValueError(
+            f"Unknown analysis module(s) {unknown_modules}. Valid modules: {_ALL_MODULES}."
+        )
+    active_modules = list(modules) if modules else _ALL_MODULES
+    if modules and "representation" in modules and embeddings is None:
+        logger.warning("Skipped representation: 'representation' requested without embeddings.")
 
     results: dict[str, Any] = {}
     missing_components: list[str] = []
@@ -237,6 +244,7 @@ def _run_analysis_pipeline(
             results["failure"] = {
                 "misclassification_summary": misclassification_summary(y_true, y_pred, y_prob),
                 "confidence_gap": confidence_gap(y_true, y_pred, y_prob),
+                "n_classes": int(y_prob.shape[1]) if y_prob.ndim == 2 else 2,
             }
         else:
             logger.warning(

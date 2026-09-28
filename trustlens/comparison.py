@@ -7,6 +7,19 @@ Utility for comparative analysis across multiple TrustReports.
 from trustlens.report import TrustReport
 
 
+def _is_deployable(trust_score) -> bool:
+    """A report can be recommended only when it is complete, unblocked and not grade D.
+
+    Partial assessments (``modules=`` subsets, missing probabilities) and failing
+    grades are never recommended for deployment (ADR-001, TL-11).
+    """
+    return (
+        not trust_score.is_blocked
+        and not getattr(trust_score, "is_partial", False)
+        and trust_score.grade != "D"
+    )
+
+
 def compare(reports: list[TrustReport]) -> None:
     """
     Compare multiple models and recommend the safest candidate.
@@ -48,15 +61,18 @@ def compare(reports: list[TrustReport]) -> None:
     blocked_candidates = []
 
     for rep in reports:
-        if rep.trust_score.is_blocked:
-            blocked_candidates.append(rep)
-        else:
+        if _is_deployable(rep.trust_score):
             viable_candidates.append(rep)
+        else:
+            blocked_candidates.append(rep)
 
     # 3. Determine Recommendation
     if not viable_candidates:
         print(" Recommendation: DO NOT DEPLOY any model.")
-        print("  * All models triggered critical diagnostic blocks.")
+        print(
+            "  * No model has a complete assessment without critical diagnostic blocks"
+            " or a failing grade."
+        )
         print("\nPrimary Causes:")
         for rep in blocked_candidates:
             model_name = rep.metadata.get("model_class", "UnknownModel")
@@ -101,8 +117,6 @@ def compare(reports: list[TrustReport]) -> None:
             if score_diff > 0:
                 print(f"    - Reliability gain: +{score_diff} points higher Trust Score.")
         else:
-            print(
-                f"    - Note: {runner_name} was filtered out due to active diagnostic blocks ({runner_up.trust_score.verdict})."
-            )
+            print(f"    - Note: {runner_name} was filtered out ({runner_up.trust_score.verdict}).")
 
     print()

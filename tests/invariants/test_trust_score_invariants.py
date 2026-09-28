@@ -39,7 +39,6 @@ def _perfect_binary(n: int = 400, confidence: float = 0.99):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="TL-01")
 def test_all_correct_confident_model_is_not_blocked():
     """TL-01: a model that is always right with 0.99 confidence is the ideal case."""
     y, y_pred, y_prob = _perfect_binary()
@@ -48,7 +47,6 @@ def test_all_correct_confident_model_is_not_blocked():
     assert ts.grade == "A", (ts.score, ts.sub_scores)
 
 
-@pytest.mark.xfail(strict=True, reason="TL-01")
 @pytest.mark.parametrize("sharpness", [4.0, 8.0])
 def test_calibrated_accurate_binary_model_is_not_blocked(sharpness):
     """TL-01: perfectly calibrated models with high accuracy must not be blocked."""
@@ -63,7 +61,6 @@ def test_calibrated_accurate_binary_model_is_not_blocked(sharpness):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="TL-02")
 def test_skipped_calibration_is_not_scored_as_zero():
     """TL-02: without y_prob, calibration is unknown, not worst-case."""
     y, y_pred, _ = _perfect_binary()
@@ -73,7 +70,6 @@ def test_skipped_calibration_is_not_scored_as_zero():
     assert "calibration" in ts.missing_dimensions
 
 
-@pytest.mark.xfail(strict=True, reason="TL-02")
 def test_skipped_module_dict_is_dropped_in_compute_trust_score():
     """TL-02: the public scorer redistributes a skipped module's weight."""
     results = {
@@ -85,7 +81,6 @@ def test_skipped_module_dict_is_dropped_in_compute_trust_score():
     assert ts.is_partial
 
 
-@pytest.mark.xfail(strict=True, reason="TL-03")
 def test_partial_run_cannot_earn_a_passing_grade():
     """TL-03: a subset of modules must never yield 'production-ready'."""
     y, y_pred, y_prob = _calibrated_binary(2000, 1.0)
@@ -106,7 +101,6 @@ def test_partial_run_cannot_earn_a_passing_grade():
     assert report.metadata["partial"] is True
 
 
-@pytest.mark.xfail(strict=True, reason="TL-03")
 def test_unknown_module_name_is_rejected():
     """TL-03: a typo in ``modules=`` must fail loudly instead of scoring 0/D."""
     y, y_pred, y_prob = _perfect_binary()
@@ -279,3 +273,18 @@ def test_perfectly_calibrated_multiclass_has_high_calibration_score():
         None, None, y, y_pred=y_prob.argmax(axis=1), y_prob=y_prob, verbose=False
     ).trust_score
     assert ts.sub_scores["calibration"] >= 80.0, ts.sub_scores
+
+
+def test_compare_never_recommends_a_partial_assessment(capsys):
+    """TL-11: a modules= subset or a report without probabilities is not deployable."""
+    from trustlens import compare
+
+    y, y_pred, y_prob = _calibrated_binary(2000, 8.0)
+    bias_only = analyze(
+        None, None, y, y_pred=y_pred, y_prob=y_prob, modules=["bias"], verbose=False
+    )
+    no_probs = analyze(None, None, y, y_pred=y_pred, verbose=False)
+    compare([bias_only, no_probs])
+    out = capsys.readouterr().out
+    assert "DO NOT DEPLOY" in out
+    assert "Recommendation: Deploy" not in out

@@ -101,6 +101,9 @@ _GRADE_THRESHOLDS = [
     (0, "D", "Low Trust - serious issues, do not deploy"),
 ]
 
+# Dimensions without which a classification verdict is incomplete (ADR-001).
+_CORE_DIMENSIONS = ("calibration", "failure")
+
 _MAX_PENALTY_FAILURE = 20.0
 _MAX_PENALTY_CALIBRATION = 15.0
 _MAX_PENALTY_FAIRNESS = 15.0
@@ -110,6 +113,22 @@ _MAX_TOTAL_PENALTY = 35.0
 # ---------------------------------------------------------------------------
 # Sub-score computers
 # ---------------------------------------------------------------------------
+
+
+def _is_assessed(dimension: str, data: object) -> bool:
+    """Return True when a module result carries the evidence its sub-score needs.
+
+    A skipped module, or a failure analysis that ran without probabilities
+    (``status == "degraded"``), has not assessed its dimension. Scoring it from
+    defaults would report "unknown" as "worst case" (TL-02).
+    """
+    if not isinstance(data, dict) or data.get("status") in ("skipped", "degraded"):
+        return False
+    if dimension == "calibration":
+        return data.get("brier_score") is not None and data.get("ece") is not None
+    if dimension == "failure":
+        return bool(data.get("confidence_gap", {}).get("status") != "skipped")
+    return True
 
 
 def _calibration_score(cal_data: dict) -> float:
@@ -128,21 +147,33 @@ def _failure_score(fail_data: dict) -> float:
     """
     Compute failure sub-score (0–100).
 
-    FailScore = 100 × clip(confidence_gap, 0, 1)
+    FailScore = 100 × (0.8 × GapScore + 0.2 × (1 − error_rate))
+    GapScore  = clip(confidence_gap / (1 − 1/K), 0, 1)
 
-    A large gap means the model is confident when right and uncertain when
-    wrong — the ideal behaviour.
+    The confidence gap (mean confidence when correct minus mean confidence when
+    wrong) is normalised by its attainable maximum ``1 − 1/K``: top-label
+    confidence can never fall below ``1/K``, so for a binary model the raw gap
+    cannot exceed 0.5. A model without any errors has no "wrong" group; it gets
+    the full gap score instead of the undefined gap of 0.0 (ADR-001, TL-01).
     """
     gap_data = fail_data.get("confidence_gap", {})
     gap = float(gap_data.get("gap", 0.0))
 
-    # Also penalize high-confidence misclassifications
     misc = fail_data.get("misclassification_summary", {})
     overall = misc.get("__overall__", {})
     error_rate = float(overall.get("overall_error_rate", 0.5))
 
-    # Combine: gap contribution (80%) + accuracy contribution (20%)
-    gap_score = float(np.clip(gap, 0.0, 1.0))
+    n_classes = fail_data.get("n_classes")
+    if n_classes is None:
+        # Reports saved before v0.5.1 lack n_classes; count the per-class entries.
+        n_classes = sum(1 for k in misc if not str(k).startswith("__"))
+    n_classes = max(int(n_classes), 2)
+    max_gap = 1.0 - 1.0 / n_classes
+
+    if error_rate <= 0.0:
+        gap_score = 1.0
+    else:
+        gap_score = float(np.clip(gap / max_gap, 0.0, 1.0))
     acc_score = 1.0 - float(np.clip(error_rate, 0.0, 1.0))
     score = 0.8 * gap_score + 0.2 * acc_score
     return 100.0 * float(np.clip(score, 0.0, 1.0))
@@ -226,6 +257,12 @@ class TrustScoreResult:
       weight was redistributed). Lets a downstream consumer tell "0.0 because the
       supplied uncertainty was unusable" apart from "dropped because none was
       supplied."
+    is_partial : bool
+      True when a core dimension (calibration or failure) was not assessed, for
+      example without probabilities or with a ``modules=`` subset. A partial
+      assessment is capped at grade C (ADR-001).
+    missing_dimensions : list[str]
+      The core dimensions that were not assessed.
     """
 
     score: int
@@ -239,6 +276,8 @@ class TrustScoreResult:
     is_blocked: bool = False
     task_type: str = "classification"
     informativeness_status: str | None = None
+    is_partial: bool = False
+    missing_dimensions: list[str] = field(default_factory=list)
 
     def __str__(self) -> str:
         lines = [
@@ -362,17 +401,20 @@ def compute_trust_score(
     # ------------------------------------------------------------------
     sub_scores: dict[str, float] = {}
 
-    if "calibration" in results:
+    if _is_assessed("calibration", results.get("calibration")):
         sub_scores["calibration"] = _calibration_score(results["calibration"])
 
-    if "failure" in results:
+    if _is_assessed("failure", results.get("failure")):
         sub_scores["failure"] = _failure_score(results["failure"])
 
-    if "bias" in results:
+    if _is_assessed("bias", results.get("bias")):
         sub_scores["bias"] = _bias_score(results["bias"])
 
-    if "representation" in results:
+    if _is_assessed("representation", results.get("representation")):
         sub_scores["representation"] = _representation_score(results["representation"])
+
+    missing_dimensions = [d for d in _CORE_DIMENSIONS if d not in sub_scores]
+    is_partial = bool(missing_dimensions)
 
     # ------------------------------------------------------------------
     # 2. Redistribute weights for missing dimensions
@@ -505,6 +547,15 @@ def compute_trust_score(
             if final_score >= threshold:
                 grade, verdict = g, v
                 break
+        if is_partial:
+            # An incomplete assessment can never pass (ADR-001, TL-03).
+            if grade in ("A", "B"):
+                grade = "C"
+            verdict = (
+                "Incomplete assessment - not assessed: "
+                + ", ".join(missing_dimensions)
+                + " (grade capped at C)"
+            )
 
     return TrustScoreResult(
         score=final_score,
@@ -517,6 +568,8 @@ def compute_trust_score(
         base_score=base_score,
         is_blocked=is_blocked,
         task_type="classification",
+        is_partial=is_partial,
+        missing_dimensions=missing_dimensions,
     )
 
 

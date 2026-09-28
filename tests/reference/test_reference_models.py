@@ -39,13 +39,7 @@ def _scaled_logreg():
 
 # (id, loader, model factory, allowed grades)
 GOOD_CLASSIFIERS = [
-    pytest.param(
-        "breast_cancer-logreg",
-        load_breast_cancer,
-        _scaled_logreg,
-        {"A", "B"},
-        marks=pytest.mark.xfail(strict=True, reason="TL-01"),
-    ),
+    ("breast_cancer-logreg", load_breast_cancer, _scaled_logreg, {"A", "B"}),
     (
         "breast_cancer-rf",
         load_breast_cancer,
@@ -58,7 +52,10 @@ GOOD_CLASSIFIERS = [
         load_wine,
         lambda: RandomForestClassifier(200, random_state=0),
         {"A"},
-        marks=pytest.mark.xfail(strict=True, reason="TL-01"),
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="TL-09: ECE blocker fires on an underconfident, 100%-accurate model (phase 2)",
+        ),
     ),
 ]
 

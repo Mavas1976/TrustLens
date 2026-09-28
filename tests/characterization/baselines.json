@@ -4,6 +4,7 @@
       "calibration": {
         "brier_score": 0.0836,
         "ece": 0.09399999999999999,
+        "mce": 0.4000000000000001,
         "reliability_curve": [
           [
             0.043478260869565216,
@@ -139,7 +140,8 @@
           ],
           "n_correct": 89,
           "n_incorrect": 11
-        }
+        },
+        "n_classes": 2
       },
       "bias": {
         "class_imbalance": {
@@ -247,16 +249,16 @@
       }
     },
     "trust_score": {
-      "score": 46,
-      "grade": "D",
+      "score": 58,
+      "grade": "C",
       "sub_scores": {
         "calibration": 77.5,
-        "failure": 35.6,
+        "failure": 53.3,
         "bias": 95.6,
         "representation": 50.1
       },
       "penalties": {
-        "Failure": 8.1,
+        "Failure": 2.2,
         "Calibration": 6.6,
         "Fairness": 5.7
       }
@@ -271,6 +273,7 @@
       "calibration": {
         "brier_score": 0.12132141321734885,
         "ece": 0.07959529043880662,
+        "mce": 0.4564137329001824,
         "reliability_curve": [
           [
             0.0,
@@ -285,8 +288,8 @@
             1.0
           ],
           [
-            0.040806308047546376,
-            0.14206170049279068,
+            0.04080630804754637,
+            0.14206170049279063,
             0.22687678652818735,
             0.36745455244153646,
             0.4533706978357331,
@@ -416,7 +419,8 @@
           ],
           "n_correct": 82,
           "n_incorrect": 18
-        }
+        },
+        "n_classes": 2
       },
       "bias": {
         "class_imbalance": {
@@ -524,16 +528,16 @@
       }
     },
     "trust_score": {
-      "score": 35,
+      "score": 43,
       "grade": "D",
       "sub_scores": {
         "calibration": 75.9,
-        "failure": 29.1,
+        "failure": 41.8,
         "bias": 96.1,
         "representation": 50.1
       },
       "penalties": {
-        "Failure": 10.3,
+        "Failure": 6.1,
         "Calibration": 4.4,
         "Fairness": 15.0
       }

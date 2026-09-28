@@ -122,6 +122,10 @@ class TrustReport:
             self.trust_score = compute_trust_score(results)
             self._compute_patterns()
 
+        self.metadata["partial"] = self.trust_score.is_partial
+        if self.trust_score.missing_dimensions:
+            self.metadata["missing_dimensions"] = list(self.trust_score.missing_dimensions)
+
     def _require_classification(self, feature: str) -> None:
         """Guard classification-only features against regression reports."""
         if self.task_type == "regression":
@@ -1724,6 +1728,8 @@ class TrustReport:
                     "sub_scores": ts.sub_scores,
                     "weights_used": ts.weights_used,
                     "breakdown": ts.breakdown,
+                    "is_partial": ts.is_partial,
+                    "missing_dimensions": ts.missing_dimensions,
                     "deployment_explanation": self.deployment_explanation,
                 },
                 indent=2,
