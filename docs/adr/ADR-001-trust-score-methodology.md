@@ -1,6 +1,6 @@
 # ADR-001: Trust Score methodology contract
 
-- **Status:** Accepted. Interim rules (v0.5.x) superseded by methodology 2.0 (§4)
+- **Status:** Accepted. Interim rules (v0.5.x) superseded by methodology 2.0 (§4), refined as 2.1 (§4b)
 - **Date:** 2026-09-28
 - **Context source:** `audit/2026-09-trustlens-audit.md` (issues TL-01 to TL-31)
 
@@ -88,6 +88,18 @@ The reference model `wine · RandomForest` is 100% accurate but underconfident
 (ECE ≈ 0.12, overconfidence error 0). Its expected band was widened from {A} to
 {A, B}. B is the intended result: calibration is the flagged dimension, not a
 blocker.
+
+### 4b. Methodology 2.1 (`score_version = "2.1"`)
+
+Independent verification of 2.0 found two new defects. Both are fixed
+without changing weights, thresholds or dimensions.
+
+| Topic | Decision | Issue |
+|---|---|---|
+| Failure sub-score | `100 × (1 − clip(error_rate/0.20) × (1 − detection))`. Undetectable errors weigh by how often they occur. In 2.0 a single error in 1,000 at constant confidence set detection to 0 and dropped a 98/A model to 59/C. The error rate at full weight (0.20) is a judgment call. | GA-01 |
+| Blocker continuity | Ceiling ramps lead up to the overconfidence (0.05 → 0.10) and fairness (0.10 → 0.15) blockers. The maximum score falls linearly to 39 at the threshold, so the score no longer jumps from B/A to D (for example 88 → 39 at an overconfidence error of 0.1001 in 2.0). This implements "blocker threshold = end of the ramp" (TL-09). | GA-02 |
+| Weak dimension | Replaced the hard cap at a sub-score of 40 with a ceiling from 100 (at 40) to 59 (at 30). | GA-02 |
+| Published table | `tests/reference/test_published_table.py` recomputes every current-methodology value in Trust Score Explained, so the documentation cannot drift from the code. | GA-10 |
 
 ### 5. Open questions
 

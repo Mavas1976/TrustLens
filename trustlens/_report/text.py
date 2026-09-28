@@ -661,10 +661,11 @@ def _methodology_lines(ts: Any) -> list[str]:
         f"  Method      : Trust Score methodology {getattr(ts, 'score_version', '1.x')}",
         "  Definitions :",
         "    - Calibration : 100 x (1 - ECE / 0.25)",
-        "    - Failure     : error-detection AUROC of confidence (80%) + accuracy (20%)",
+        "    - Failure     : 100 x (1 - min(error rate / 0.20, 1) x (1 - detection)), detection from AUROC",
         "    - Bias        : 100 x (1 - largest fairness gap / 0.30), with sensitive features only",
-        "    - Blockers    : no skill, overconfidence > 0.10, fairness gap > 0.15 (grade D)",
-        "    - Caps        : incomplete assessment or a sub-score below 40 (grade C)",
+        "    - Blockers    : no skill, overconfidence > 0.10, fairness gap > 0.15 (grade D);",
+        "                    ceilings fall continuously towards each threshold",
+        "    - Caps        : incomplete assessment (grade C); sub-scores below 40 lower the ceiling",
     ]
 
 

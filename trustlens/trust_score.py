@@ -30,14 +30,15 @@ a certification or a regulatory assessment (ADR-001).
  * **0–39 (D)**   — Low. Serious issues; do not deploy.
  * **N/A**        — No dimension could be scored (insufficient evidence).
 
-Formula (methodology 2.0)
+Formula (methodology 2.1)
 -------------------------
 1. Score every dimension that was assessed (0–100):
 
  * CalibrationScore    = 100 × clip(1 − ECE / 0.25, 0, 1)
- * FailureScore        = 100 × (0.8 × clip(2 × AUROC − 1, 0, 1) + 0.2 × accuracy)
-   AUROC = error-detection AUROC of top-label confidence (correct vs wrong);
-   a report without errors uses 1 for the detection term.
+ * FailureScore        = 100 × (1 − clip(error_rate / 0.20, 0, 1)
+                                 × (1 − clip(2 × AUROC − 1, 0, 1)))
+   AUROC = error-detection AUROC of top-label confidence (correct vs wrong).
+   Undetectable errors weigh by how often they occur.
  * BiasScore           = 100 × clip(1 − max_gap / 0.30, 0, 1), only when
    sensitive features were supplied; max_gap is the largest defined subgroup
    accuracy gap or equalized-odds TPR/FPR gap over groups with enough support.
@@ -50,9 +51,13 @@ Formula (methodology 2.0)
 
 3. Blockers (grade D, score capped at 39): accuracy not above the
    majority-class baseline; overconfidence error > 0.10; a fairness gap > 0.15.
+   Ceiling ramps lead up to the last two, so the score is continuous: the
+   maximum score falls linearly from 100 (overconfidence 0.05, gap 0.10) to
+   39 at the blocker threshold.
 
 4. Caps (grade C, score capped at 59): calibration or failure not assessed
-   (``is_partial``); any assessed sub-score below 40.
+   (``is_partial``). A sub-score below 40 lowers the ceiling from 100 to 59
+   (reached at 30).
 
 Every signal is counted once. There are no additive penalties
 (``penalties_applied`` is always empty since 2.0). The grade always matches the
@@ -78,7 +83,7 @@ from trustlens._palette import BRAND_COLORS
 # Constants
 # ---------------------------------------------------------------------------
 
-SCORE_VERSION = "2.0"
+SCORE_VERSION = "2.1"
 
 # Grade reported when no dimension could be scored (insufficient evidence).
 NOT_ASSESSED_GRADE = "N/A"
@@ -115,10 +120,20 @@ _NO_SKILL_AUROC = 0.6
 # (P(OCE > 0.10) ≈ 0.2 at n = 30 for a perfectly calibrated model).
 _MIN_SAMPLES_OVERCONFIDENCE = 100
 
+# Failure: error rate at which undetectable errors weigh fully (methodology 2.1).
+_FAILURE_ERROR_RATE_AT_FULL_WEIGHT = 0.20
+
+# Ceiling ramps (methodology 2.1, GA-02): the maximum score falls linearly from
+# 100 at the ramp start to 39 at the blocker threshold, so crossing a blocker
+# never makes the score jump.
+_OVERCONFIDENCE_RAMP_START = 0.05
+_FAIRNESS_RAMP_START = 0.10
+_WEAK_DIMENSION_RAMP_START = 30.0  # sub-score where the weak-dimension ceiling reaches 59
+
 # Score caps keep the number consistent with the grade band.
 _BLOCKED_SCORE_CAP = 39  # grade D
 _CAPPED_SCORE_CAP = 59  # grade C
-_WEAK_DIMENSION = 40.0  # an assessed sub-score below this caps the grade at C
+_WEAK_DIMENSION = 40.0  # below this an assessed sub-score starts lowering the score ceiling
 
 
 # ---------------------------------------------------------------------------
@@ -162,14 +177,15 @@ def _failure_score(fail_data: dict) -> float:
     """
     Compute failure sub-score (0–100).
 
-    FailureScore = 100 × (0.8 × DetectionScore + 0.2 × accuracy)
+    FailureScore = 100 × (1 − clip(error_rate / 0.20, 0, 1) × (1 − DetectionScore))
     DetectionScore = clip(2 × AUROC − 1, 0, 1)
 
-    AUROC is the error-detection AUROC: how well top-label confidence ranks
-    correct predictions above wrong ones (0.5 = no information, 1.0 = perfect).
-    A report without any error has DetectionScore 1. Reports saved before v0.6
-    lack the AUROC and fall back to the confidence gap normalised by its
-    attainable maximum ``1 − 1/K``.
+    The risk this dimension measures is errors that confidence does not flag.
+    It scales with how often errors occur: one undetectable error in a thousand
+    costs half a point, not 80 (methodology 2.1, GA-01). AUROC is the
+    error-detection AUROC of top-label confidence; without errors the score is
+    100. Reports saved before 2.0 lack the AUROC and use the confidence gap
+    normalised by its attainable maximum ``1 − 1/K`` as DetectionScore.
     """
     misc = fail_data.get("misclassification_summary", {})
     error_rate = float(misc.get("__overall__", {}).get("overall_error_rate", 0.5))
@@ -187,8 +203,8 @@ def _failure_score(fail_data: dict) -> float:
         max_gap = 1.0 - 1.0 / max(int(n_classes), 2)
         detection = float(np.clip(gap / max_gap, 0.0, 1.0))
 
-    accuracy = 1.0 - float(np.clip(error_rate, 0.0, 1.0))
-    return 100.0 * float(np.clip(0.8 * detection + 0.2 * accuracy, 0.0, 1.0))
+    error_weight = float(np.clip(error_rate / _FAILURE_ERROR_RATE_AT_FULL_WEIGHT, 0.0, 1.0))
+    return 100.0 * (1.0 - error_weight * (1.0 - detection))
 
 
 def _fairness_gaps(bias_data: dict) -> list[float]:
@@ -404,23 +420,41 @@ def _redistribute(weights: dict[str, float], present: list[str]) -> dict[str, fl
     return {d: weights[d] / total for d in present} if total > 0 else {}
 
 
+def _ramp_ceiling(value: float, start: float, end: float, floor: float) -> float | None:
+    """Maximum allowed score for a risk signal between ``start`` (100) and ``end`` (``floor``)."""
+    if value <= start:
+        return None
+    fraction = min((value - start) / (end - start), 1.0)
+    return 100.0 - (100.0 - floor) * fraction
+
+
 def _finalize(
     raw_score: float,
     blockers: list[str],
     caps: list[str],
-) -> tuple[int, int, str, str]:
-    """Turn the weighted score, blockers and caps into (score, base_score, grade, verdict).
+    ceilings: list[tuple[float, str]] | None = None,
+) -> tuple[int, int, str, str, list[str]]:
+    """Turn the weighted score, blockers, caps and ceilings into the reported result.
 
-    The reported score always lies inside its grade band: a blocked result is
-    capped at 39 (grade D) and a capped result at 59 (grade C). ``base_score``
-    keeps the weighted evidence score before any cap.
+    Returns ``(score, base_score, grade, verdict, binding)`` where ``binding``
+    lists the caps and ceilings that actually lowered the score. A blocked
+    result is capped at 39 (grade D), a capped result at 59 (grade C), and each
+    ceiling at its own limit; the reported score always lies inside its grade
+    band. ``base_score`` keeps the weighted evidence score before any limit.
     """
     base_score = int(round(float(np.clip(raw_score, 0.0, 100.0))))
+    limits: list[tuple[float, str]] = [(_CAPPED_SCORE_CAP, c) for c in caps]
+    limits += list(ceilings or [])
     score = base_score
+    binding: list[str] = []
     if blockers:
         score = min(score, _BLOCKED_SCORE_CAP)
-    elif caps:
-        score = min(score, _CAPPED_SCORE_CAP)
+    else:
+        for limit, reason in sorted(limits):
+            if limit < score:
+                score = int(np.floor(limit))
+            if limit < base_score:
+                binding.append(reason)
 
     grade, verdict = "D", _GRADE_THRESHOLDS[-1][2]
     for threshold, g, v in _GRADE_THRESHOLDS:
@@ -429,9 +463,9 @@ def _finalize(
             break
     if blockers:
         verdict = f"Low Trust - {blockers[0]}"
-    elif caps:
-        verdict = f"{verdict.split(' - ')[0]} - {caps[0]}"
-    return score, base_score, grade, verdict
+    elif binding:
+        verdict = f"{verdict.split(' - ')[0]} - {binding[0]}"
+    return score, base_score, grade, verdict, binding
 
 
 def _validated_weights(weights: dict[str, float] | None, defaults: dict[str, float]) -> dict:
@@ -570,25 +604,49 @@ def compute_trust_score(
                 f"Decisions do not beat the majority-class baseline (accuracy {accuracy:.3f} "
                 f"vs {baseline:.3f}); review the decision threshold (capped at grade C)"
             )
+    ceilings: list[tuple[float, str]] = []
     oce = calibration.get("overconfidence_error")
-    if oce is not None and float(oce) > _BLOCK_OVERCONFIDENCE:
+    if oce is not None:
+        oce_value = float(oce)
         n_cal = calibration.get("n_samples")
-        if n_cal is not None and int(n_cal) < _MIN_SAMPLES_OVERCONFIDENCE:
-            caps.append(
-                f"Overconfidence error {float(oce):.3f} > {_BLOCK_OVERCONFIDENCE} on only "
-                f"{int(n_cal)} samples (low support; capped at grade C)"
-            )
-        else:
+        low_support = n_cal is not None and int(n_cal) < _MIN_SAMPLES_OVERCONFIDENCE
+        # On small samples the estimate is too noisy to block on: the ceiling
+        # stops at 59 (grade C) instead of 39.
+        floor = float(_CAPPED_SCORE_CAP if low_support else _BLOCKED_SCORE_CAP)
+        limit = _ramp_ceiling(oce_value, _OVERCONFIDENCE_RAMP_START, _BLOCK_OVERCONFIDENCE, floor)
+        if oce_value > _BLOCK_OVERCONFIDENCE and not low_support:
             blockers.append(
-                f"Blocked by overconfidence (overconfidence error {float(oce):.3f} "
+                f"Blocked by overconfidence (overconfidence error {oce_value:.3f} "
                 f"> {_BLOCK_OVERCONFIDENCE})"
             )
+        elif limit is not None:
+            support = f" on only {n_cal} samples (low support)" if low_support else ""
+            ceilings.append(
+                (
+                    limit,
+                    f"Overconfidence error {oce_value:.3f}{support} limits the score "
+                    f"to {int(np.floor(limit))}",
+                )
+            )
     fairness_gaps = _fairness_gaps(results.get("bias", {}) or {})
-    if fairness_gaps and max(fairness_gaps) > _BLOCK_FAIRNESS_GAP:
-        blockers.append(
-            f"Blocked by severe fairness violation (largest gap {max(fairness_gaps):.3f} "
-            f"> {_BLOCK_FAIRNESS_GAP})"
-        )
+    if fairness_gaps:
+        max_gap = max(fairness_gaps)
+        if max_gap > _BLOCK_FAIRNESS_GAP:
+            blockers.append(
+                f"Blocked by severe fairness violation (largest gap {max_gap:.3f} "
+                f"> {_BLOCK_FAIRNESS_GAP})"
+            )
+        else:
+            limit = _ramp_ceiling(
+                max_gap, _FAIRNESS_RAMP_START, _BLOCK_FAIRNESS_GAP, float(_BLOCKED_SCORE_CAP)
+            )
+            if limit is not None:
+                ceilings.append(
+                    (
+                        limit,
+                        f"Fairness gap {max_gap:.3f} limits the score to {int(np.floor(limit))}",
+                    )
+                )
 
     # 4. Caps: an incomplete assessment or a very weak dimension cannot pass
     if is_partial:
@@ -598,11 +656,25 @@ def compute_trust_score(
             + ", ".join(missing_dimensions)
             + " (capped at grade C)",
         )
-    weak = sorted(d for d, s in sub_scores.items() if s < _WEAK_DIMENSION)
-    if weak:
-        caps.append("Weak dimension: " + ", ".join(weak) + " (capped at grade C)")
+    for dim, sub in sorted(sub_scores.items()):
+        if sub < _WEAK_DIMENSION:
+            # 100 at a sub-score of 40, falling to 59 at 30 and below (no cliff).
+            limit = _ramp_ceiling(
+                _WEAK_DIMENSION - sub,
+                0.0,
+                _WEAK_DIMENSION - _WEAK_DIMENSION_RAMP_START,
+                float(_CAPPED_SCORE_CAP),
+            )
+            if limit is not None:
+                ceilings.append(
+                    (
+                        limit,
+                        f"Weak dimension: {dim} ({sub:.1f}/100) limits the score to "
+                        f"{int(np.floor(limit))}",
+                    )
+                )
 
-    score, base_score, grade, verdict = _finalize(raw_score, blockers, caps)
+    score, base_score, grade, verdict, binding = _finalize(raw_score, blockers, caps, ceilings)
     if not sub_scores and not blockers:
         # Nothing could be scored: report insufficient evidence instead of a
         # misleading 0/D (ADR-001; SPOS NEEDS_EVIDENCE).
@@ -626,7 +698,7 @@ def compute_trust_score(
         is_partial=is_partial,
         missing_dimensions=missing_dimensions,
         blockers=blockers,
-        caps_applied=caps,
+        caps_applied=binding,
         score_version=f"{SCORE_VERSION}-legacy-input" if legacy_input else SCORE_VERSION,
     )
 
@@ -963,7 +1035,7 @@ def regression_trust_score(
             "below nominal - over-confident intervals)"
         )
 
-    final_score, base_score, grade, verdict = _finalize(raw_score, blockers, [])
+    final_score, base_score, grade, verdict, _ = _finalize(raw_score, blockers, [])
 
     return TrustScoreResult(
         score=final_score,

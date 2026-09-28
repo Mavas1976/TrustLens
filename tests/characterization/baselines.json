@@ -254,20 +254,20 @@
       }
     },
     "trust_score": {
-      "score": 65,
+      "score": 68,
       "grade": "B",
       "sub_scores": {
         "calibration": 62.4,
-        "failure": 67.1,
+        "failure": 78.9,
         "bias": 70.8,
         "representation": 50.1
       },
       "penalties": {},
-      "base_score": 65,
+      "base_score": 68,
       "is_blocked": false,
       "blockers": [],
       "caps_applied": [],
-      "score_version": "2.0"
+      "score_version": "2.1"
     },
     "metadata": {
       "n_samples": 100,
@@ -543,7 +543,7 @@
       "grade": "D",
       "sub_scores": {
         "calibration": 68.2,
-        "failure": 66.3,
+        "failure": 66.1,
         "bias": 33.3,
         "representation": 50.1
       },
@@ -553,10 +553,8 @@
       "blockers": [
         "Blocked by severe fairness violation (largest gap 0.200 > 0.15)"
       ],
-      "caps_applied": [
-        "Weak dimension: bias (capped at grade C)"
-      ],
-      "score_version": "2.0"
+      "caps_applied": [],
+      "score_version": "2.1"
     },
     "metadata": {
       "n_samples": 100,

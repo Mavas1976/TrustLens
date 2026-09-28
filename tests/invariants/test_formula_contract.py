@@ -1,9 +1,11 @@
 """
-Formula contract for Trust Score methodology 2.0 (TL-10).
+Formula contract for the Trust Score methodology (TL-10).
 
-Each formula below is transcribed from ADR-001 / docs/trust_score_explained.md
-and evaluated independently of the implementation. If the code or the
-documentation changes alone, these tests fail, so both must change together.
+The formulas below are transcribed by hand from ADR-001 and
+docs/trust_score_explained.md and evaluated independently of the
+implementation, so a change to the code alone fails these tests. They do not
+read the documentation; the published before/after table is checked against
+the code by tests/reference/test_published_table.py.
 """
 
 from __future__ import annotations
@@ -21,7 +23,13 @@ def documented_calibration(ece):
 
 def documented_failure(auroc, error_rate):
     detection = 1.0 if error_rate == 0 else min(max(2 * auroc - 1, 0), 1)
-    return 100 * (0.8 * detection + 0.2 * (1 - error_rate))
+    return 100 * (1 - min(max(error_rate / 0.20, 0), 1) * (1 - detection))
+
+
+def documented_ceiling(value, start, end, floor):
+    if value <= start:
+        return 100.0
+    return 100 - (100 - floor) * min((value - start) / (end - start), 1)
 
 
 def documented_bias(max_gap):
@@ -50,8 +58,8 @@ def _results(ece, auroc, error_rate, gaps=None, oce=0.0, accuracy=None, baseline
 
 
 def test_score_version():
-    assert SCORE_VERSION == "2.0"
-    assert compute_trust_score(_results(0.02, 0.9, 0.1)).score_version == "2.0"
+    assert SCORE_VERSION == "2.1"
+    assert compute_trust_score(_results(0.02, 0.9, 0.1)).score_version == "2.1"
 
 
 @pytest.mark.parametrize("ece", [0.0, 0.03, 0.1, 0.2, 0.3])
@@ -119,10 +127,40 @@ def test_blocker_thresholds_are_strict_inequalities():
     assert not compute_trust_score(_results(0.02, 0.95, 0.05, gaps=0.15)).is_blocked
 
 
-def test_weak_dimension_caps_at_grade_c():
-    ts = compute_trust_score(_results(0.24, 0.99, 0.01))  # calibration ≈ 4
-    assert ts.grade == "C" and ts.score <= 59
+def test_weak_dimension_limits_the_score():
+    # Calibration ≈ 4 (at or below 30) while the weighted score is ≈ 95.
+    weights = {"calibration": 0.05, "failure": 0.95}
+    ts = compute_trust_score(_results(0.24, 0.99, 0.01), weights=weights)
+    assert ts.base_score > 59
+    assert ts.grade == "C" and ts.score == 59
     assert any("Weak dimension" in c for c in ts.caps_applied)
+
+
+@pytest.mark.parametrize(
+    ("oce", "gap"),
+    [(0.04, None), (0.075, None), (0.0999, None), (0.02, 0.12), (0.02, 0.149)],
+)
+def test_ceiling_ramps_follow_the_documented_formula(oce, gap):
+    ts = compute_trust_score(_results(0.02, 0.99, 0.01, oce=oce, gaps=gap))
+    limit = min(
+        documented_ceiling(oce, 0.05, 0.10, 39),
+        documented_ceiling(gap, 0.10, 0.15, 39) if gap is not None else 100.0,
+    )
+    assert ts.score == min(ts.base_score, int(np.floor(limit)))
+
+
+def test_score_is_continuous_across_blocker_thresholds():
+    """GA-02: no jump when a signal crosses its blocker threshold."""
+    for key, values in (
+        ("oce", np.linspace(0.04, 0.12, 161)),
+        ("gaps", np.linspace(0.08, 0.17, 181)),
+    ):
+        scores = [
+            compute_trust_score(_results(0.02, 0.99, 0.01, **{key: float(v)})).score for v in values
+        ]
+        steps = np.abs(np.diff(scores))
+        assert steps.max() <= 2, (key, int(steps.max()))
+        assert all(a >= b for a, b in zip(scores, scores[1:])), key
 
 
 @pytest.mark.parametrize("seed", range(20))
@@ -187,7 +225,7 @@ def test_legacy_results_are_flagged():
     del results["calibration"]["overconfidence_error"]
     with pytest.warns(UserWarning, match="before Trust Score methodology 2.0"):
         ts = compute_trust_score(results)
-    assert ts.score_version == "2.0-legacy-input"
+    assert ts.score_version == "2.1-legacy-input"
 
 
 def test_zero_weight_on_every_assessed_dimension_is_rejected():

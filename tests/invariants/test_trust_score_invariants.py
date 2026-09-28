@@ -54,6 +54,7 @@ def test_calibrated_accurate_binary_model_is_not_blocked(sharpness):
     assert (y == y_pred).mean() > 0.85
     ts = analyze(None, None, y, y_pred=y_pred, y_prob=y_prob, verbose=False).trust_score
     assert not ts.is_blocked, (ts.verdict, ts.sub_scores)
+    assert ts.grade in ("A", "B"), (ts.score, ts.sub_scores, ts.caps_applied)
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +161,8 @@ def test_perfect_classifier_has_no_fairness_violation():
         verbose=False,
     ).trust_score
     assert not any("fairness" in b for b in ts.blockers), ts.blockers
-    assert ts.sub_scores.get("bias", 100.0) >= 90.0, ts.sub_scores
+    # Fairness was assessed (both groups have defined FPRs) and found clean.
+    assert ts.sub_scores["bias"] == 100.0, ts.sub_scores
     assert not ts.is_blocked, ts.verdict
 
 
@@ -180,7 +182,9 @@ def test_tiny_group_does_not_trigger_fairness_block():
         verbose=False,
     ).trust_score
     assert not any("fairness" in b for b in ts.blockers), ts.blockers
-    assert ts.sub_scores.get("bias", 100.0) >= 90.0, ts.sub_scores
+    # The only other group is too small, so no gap can be measured: the
+    # dimension is not scored rather than scored as fair.
+    assert "bias" not in ts.sub_scores, ts.sub_scores
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +232,7 @@ def test_html_repr_escapes_feature_names():
     )
     html_out = report._repr_html_()
     assert payload not in html_out
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html_out
     assert payload not in report.trust_score._repr_html_()
 
 
@@ -309,12 +314,12 @@ def test_compare_returns_structured_ranking_with_names():
 def test_saved_report_records_methodology_version(tmp_path):
     y, y_pred, y_prob = _calibrated_binary(1000, 4.0)
     report = analyze(None, None, y, y_pred=y_pred, y_prob=y_prob, verbose=False)
-    assert report.metadata["score_version"] == "2.0"
+    assert report.metadata["score_version"] == trustlens_version_of_score()
     bundle = report.save(str(tmp_path / "bundle"))
     import json
 
     saved = json.loads((bundle / "trust_score.json").read_text())
-    assert saved["score_version"] == "2.0"
+    assert saved["score_version"] == trustlens_version_of_score()
     assert "blockers" in saved and "caps_applied" in saved
 
 
@@ -359,3 +364,38 @@ def test_not_assessed_report_text_is_consistent():
     assert "capped at grade C" not in text
     assert "Calibration quality is excellent" not in text
     assert "critical issues" not in text
+
+
+def trustlens_version_of_score():
+    from trustlens.trust_score import SCORE_VERSION
+
+    return SCORE_VERSION
+
+
+def test_single_error_does_not_collapse_an_accurate_model():
+    """GA-01: one undetectable error in a thousand costs at most a few points."""
+    y = np.array([0, 1] * 500)
+    perfect = analyze(
+        None, None, y, y_pred=y, y_prob=_perfect_binary(1000)[2], verbose=False
+    ).trust_score
+    y_pred = y.copy()
+    y_pred[0] = 1 - y_pred[0]
+    p = np.where(y_pred == 1, 0.99, 0.01)
+    one_error = analyze(
+        None, None, y, y_pred=y_pred, y_prob=np.column_stack([1 - p, p]), verbose=False
+    ).trust_score
+    assert perfect.grade == one_error.grade == "A"
+    assert perfect.score - one_error.score <= 3
+
+
+def test_constant_confidence_accurate_model_is_not_capped():
+    """GA-01: 97% accuracy with uninformative confidence stays deployable."""
+    rng = np.random.default_rng(RNG_SEED)
+    y = rng.integers(0, 2, 4000)
+    correct = rng.random(4000) < 0.97
+    y_pred = np.where(correct, y, 1 - y)
+    p = np.where(y_pred == 1, 0.97, 0.03)
+    ts = analyze(
+        None, None, y, y_pred=y_pred, y_prob=np.column_stack([1 - p, p]), verbose=False
+    ).trust_score
+    assert ts.grade in ("A", "B"), (ts.score, ts.sub_scores, ts.caps_applied)
