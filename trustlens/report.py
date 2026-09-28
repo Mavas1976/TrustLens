@@ -219,16 +219,22 @@ class TrustReport:
             .get("incorrect_confidence_mean", 0.0)
         )
 
+        # Patterns only describe dimensions that were actually assessed; a
+        # skipped module has no evidence and must not read as a perfect 0.0
+        # (TL-17).
+        has_failure = "failure" in self.trust_score.sub_scores
+        has_calibration = "calibration" in self.trust_score.sub_scores
+
         # 1. Confidently Wrong
-        if (failure_score < 40 or avg_err_conf > 0.65) and conf_gap < 0.1:
+        if has_failure and (failure_score < 40 or avg_err_conf > 0.65) and conf_gap < 0.1:
             self._patterns.append("Confidently Wrong")
 
         # 2. Safe Failures
-        if failure_score < 60 and avg_err_conf < 0.5 and conf_gap > 0.15:
+        if has_failure and failure_score < 60 and avg_err_conf < 0.5 and conf_gap > 0.15:
             self._patterns.append("Safe Failures")
 
         # 3. Calibration Drift
-        if ece > 0.1 or (failure_score > 70 and ece > 0.08):
+        if has_calibration and (ece > 0.1 or (failure_score > 70 and ece > 0.08)):
             self._patterns.append("Calibration Drift")
 
     def _format_score_explanation(self) -> list[str]:
