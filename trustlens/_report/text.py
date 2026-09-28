@@ -186,6 +186,12 @@ class TextReportMixin(ReportBase):
                         else "n/a (no calibrated level)"
                     )
                 )
+                evidence = pic.get("sharpness_evidence")
+                if evidence is not None:
+                    print(
+                        f"  Sharpness evidence : {evidence:.4f}  (scored: best level's "
+                        "calibration weight × sharpness)"
+                    )
                 print(f"  Worst level gap    : {pic.get('worst_calibration_error'):+.4f}")
                 print(f"  Mean interval width: {pic.get('mean_interval_width'):.4f}")
                 print(f"  Verdict            : {pic.get('verdict')}")

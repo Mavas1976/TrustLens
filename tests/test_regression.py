@@ -560,3 +560,15 @@ def test_sharpness_evidence_is_the_best_weighted_level():
 
     expected = max(term(0.5, 10.0, 1.0), term(0.8, 20.0, 0.5))
     assert out["sharpness_evidence"] == pytest.approx(expected, abs=1e-4)
+
+
+def test_sharpness_evidence_uses_each_level_own_weight():
+    """NF7-03: a narrow but half-weighted level beats a calibrated wide one, and
+    weight and ratio come from the same level."""
+    y = np.linspace(0.0, 100.0, 1000)
+    ref50 = np.quantile(y, 0.75) - np.quantile(y, 0.25)
+    ref80 = np.quantile(y, 0.9) - np.quantile(y, 0.1)
+    spec = {0.5: (0.5, 0.45 * ref50), 0.8: (0.725, 0.1 * ref80)}  # ratios 0.9 (w 1), 0.2 (w 0.5)
+    intervals = {lvl: _intervals_with_coverage(y, cov, hw) for lvl, (cov, hw) in spec.items()}
+    out = multilevel_interval_coverage(y, intervals, tolerance=0.05)
+    assert out["sharpness_evidence"] == pytest.approx(0.5 * 0.8, abs=2e-3)

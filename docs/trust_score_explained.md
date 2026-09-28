@@ -31,7 +31,7 @@ are recorded in [ADR-001](adr/ADR-001-trust-score-methodology.md).
 **Regression:**
 - `accuracy`: skill score (R²), docked for heavy-tailed errors
 - `interval_calibration`: single-level PICP or multi-level ICE
-- `uncertainty_informativeness`: sharpness proxy or error-variance correlation
+- `uncertainty_informativeness`: the larger of the calibration-weighted sharpness evidence (intervals) and the error-variance correlation (predicted variance)
 
 ## Scoring Workflow (classification)
 
@@ -114,12 +114,15 @@ stops at 59 (grade C) instead of blocking.
 
 Both regression blockers have ceiling ramps as well: the ceiling falls from 100
 to 39 as the skill (R²) drops from 0.10 to 0, and as the coverage shortfall
-grows from 0.05 to 0.10. Uncertainty informativeness from multi-level intervals
-is weighted by how well the best level is calibrated (weight 1 within 0.05 of
-nominal coverage, 0 at 0.10). With `predicted_variance` the sub-score is the
-larger of that weighted sharpness score and the error-variance correlation
-score, so worse-calibrated intervals never raise the score. Intervals from a
-multi-level mapping (including a single level) that are all unusable score 0.
+grows from 0.05 to 0.10. Uncertainty informativeness from interval mappings is
+the best level's calibration weight (1 within 0.05 of nominal coverage, 0 at
+0.10) times its sharpness against climatology; with `predicted_variance` the
+sub-score is the larger of that and the error-variance correlation score.
+Widening a level or shifting it away from nominal coverage never raises the
+score. Narrowing a level is a trade-off: within the 0.05 tolerance a sharper,
+slightly over-confident level can raise informativeness by a few points.
+Intervals from a multi-level mapping (including a single level) that are all
+unusable score 0.
 
 ### Caps and ceilings (grade C, score ≤ 59)
 

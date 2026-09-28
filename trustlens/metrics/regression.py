@@ -267,9 +267,11 @@ def multilevel_interval_coverage(
       ``|emp(tau) - tau| <= tolerance``, falling linearly to 0 at twice the
       tolerance. Higher is better (intervals sharper than the marginal baseline
       while staying honest). Down-weighting miscalibrated levels is the point:
-      intervals that look "sharp" only because they are over-confident are
-      excluded, so they cannot inflate the score, and a level drifting across
-      the tolerance changes the proxy gradually (NF3-02).
+      intervals that look "sharp" only because they are over-confident lose
+      their weight beyond the tolerance, and a level drifting across the
+      tolerance changes the proxy gradually (NF3-02). Within the tolerance a
+      sharper, slightly over-confident level still counts fully (the
+      resolution/reliability trade-off).
 
     Why two numbers
     ---------------

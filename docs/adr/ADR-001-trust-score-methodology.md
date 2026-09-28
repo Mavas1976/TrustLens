@@ -43,7 +43,12 @@ methodology version must satisfy:
 - Rescaling a regression target and its predictions together does not change the score.
 - Fairness gaps are computed only from defined rates (TPR needs positives, FPR
   needs negatives) and from groups with enough support.
-- Worse calibration with the same predictions never raises the score.
+- Worse calibration with the same predictions never raises the score. For
+  regression intervals this holds for widening a level or shifting it away
+  from nominal coverage; narrowing a level trades sharpness against
+  calibration, and within the 0.05 calibration tolerance a sharper, slightly
+  over-confident level can raise the informativeness sub-score (the
+  resolution/reliability trade-off; an open design question, see §5).
   This invariant is about the scoring mechanisms (ceilings, blockers, the
   informativeness rule). The underlying metrics are not monotone in every
   change of input: an extra error can lower ECE for an under-confident model,
@@ -133,6 +138,15 @@ pre-fix code; for the 2.2 changes this was checked by running the new tests
 against the 2.1 code and against targeted mutants.
 
 ### 5. Open questions
+
+- Regression sharpness vs calibration (NF7-01): the informativeness evidence
+  gives full weight to any level within the 0.05 calibration tolerance, so
+  narrowing a level until it is slightly over-confident can raise the score
+  (up to about +8 points in the verifier's repro, and a few cases up to +11
+  across a random search). Options: start the calibration weight falling at 0
+  instead of at the tolerance, weight sharpness by the level's own coverage
+  error, or accept the trade-off as documented. This is a methodology decision
+  for the maintainer.
 
 - The package version is still 0.5.0 while the scores follow methodology 2.0.
   `score_version` identifies the methodology. Bump the package version when
