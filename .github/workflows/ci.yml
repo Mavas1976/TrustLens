@@ -49,7 +49,7 @@ jobs:
           cache: pip
       - name: Install lint dependencies
         run: |
-          pip install pre-commit ruff
+          pip install pre-commit "ruff==0.15.10"  # keep in sync with .pre-commit-config.yaml
       - name: Run pre-commit
         run: pre-commit run --all-files
       - name: Ruff check

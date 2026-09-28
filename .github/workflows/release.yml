@@ -24,7 +24,7 @@ jobs:
           pip install -e ".[dev,full]"
       - name: Run linting
         run: |
-          pip install ruff pre-commit
+          pip install "ruff==0.15.10" pre-commit  # keep in sync with .pre-commit-config.yaml
           ruff check .
           ruff format --check .
       - name: Run type checking
