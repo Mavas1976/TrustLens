@@ -116,7 +116,7 @@ def test_unknown_module_name_is_rejected():
 @pytest.mark.parametrize(
     "scale",
     [
-        pytest.param(1e-5, marks=pytest.mark.xfail(strict=True, reason="TL-04")),
+        1e-5,
         1e-3,
         1e3,
         1e5,

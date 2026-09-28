@@ -108,12 +108,15 @@ def error_distribution(
     bins = np.linspace(0.0, upper if upper > 0 else 1.0, n_bins + 1)
     error_hist, _ = np.histogram(abs_err, bins=bins)
 
+    # Unrounded on purpose: the regression Trust Score is computed from these
+    # values, and rounding to fixed decimals made it depend on the target's unit
+    # (TL-04). Displays format them instead.
     return {
-        "median_absolute_error": round(float(np.median(abs_err)), 4),
-        "p90_absolute_error": round(float(np.percentile(abs_err, 90)), 4),
-        "max_error": round(upper, 4),
-        "mean_absolute_error": round(float(abs_err.mean()), 4),
-        "rmse": round(float(np.sqrt(np.mean((y_true - y_pred) ** 2))), 4),
+        "median_absolute_error": float(np.median(abs_err)),
+        "p90_absolute_error": float(np.percentile(abs_err, 90)),
+        "max_error": upper,
+        "mean_absolute_error": float(abs_err.mean()),
+        "rmse": float(np.sqrt(np.mean((y_true - y_pred) ** 2))),
         "histogram_bins": bins,
         "error_hist": error_hist,
         "n_samples": int(abs_err.size),
