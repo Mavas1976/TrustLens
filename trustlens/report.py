@@ -30,15 +30,19 @@ from typing import Any, Optional
 import numpy as np
 
 from trustlens._report.base import _WEAK_EXPLAIN
+from trustlens._report.bias_plots import BiasPlotMixin
 from trustlens._report.html import HtmlMixin
 from trustlens._report.io import PersistenceMixin
+from trustlens._report.narrative import NarrativeMixin
 from trustlens._report.plots import PlotMixin
 from trustlens._report.text import TextReportMixin
 
 logger = logging.getLogger(__name__)
 
 
-class TrustReport(TextReportMixin, PlotMixin, PersistenceMixin, HtmlMixin):
+class TrustReport(
+    TextReportMixin, NarrativeMixin, PlotMixin, BiasPlotMixin, PersistenceMixin, HtmlMixin
+):
     """
     Container for all TrustLens analysis results.
 

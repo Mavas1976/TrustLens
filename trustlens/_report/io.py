@@ -66,135 +66,76 @@ class PersistenceMixin(ReportBase):
         if not overwrite and p.exists() and (p.is_file() or any(p.iterdir())):
             raise FileExistsError(f"{p} already exists; pass overwrite=True to replace it.")
 
-        if self.task_type == "regression":
-            return self._save_regression(path, p)
+        is_classification = self.task_type != "regression"
 
         # 1. Single-file JSON export
-        if path.lower().endswith(".json"):
+        if suffix == ".json":
             p.parent.mkdir(parents=True, exist_ok=True)
-            # Unified structure for single-file artifact
-            data = {
-                "results": self._to_serializable(self.results),
+            data: dict[str, Any] = {
+                "results": self.results,
                 "metadata": self.metadata,
+                "task_type": self.task_type,
                 "trust_score": self.trust_score.score,
                 "grade": self.trust_score.grade,
                 "sub_scores": self.trust_score.sub_scores,
-                "deployment_explanation": self.deployment_explanation,
+                "score_version": self.trust_score.score_version,
             }
+            if is_classification:
+                data["deployment_explanation"] = self.deployment_explanation
             p.write_text(self._dumps(data), encoding="utf-8")
-            logger.info("Unified Report JSON saved to: %s", p)
+            logger.info("Report JSON saved to: %s", p)
             return p
 
         # 2. Single-file TXT export
-        if path.lower().endswith(".txt"):
+        if suffix == ".txt":
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(self._generate_text_report(), encoding="utf-8")
             logger.info("Report TXT saved to: %s", p)
             return p
 
-        # 3. Directory bundle export (Original behavior)
-        out_dir = p
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-        # Serialize metrics
-        (out_dir / "report.json").write_text(
-            self._dumps(self.results),
-            encoding="utf-8",
-        )
-
-        # Serialize metadata
-        (out_dir / "metadata.json").write_text(
-            self._dumps(self.metadata),
-            encoding="utf-8",
-        )
-
-        # Serialize trust score
-        ts = self.trust_score
-        (out_dir / "trust_score.json").write_text(
-            self._dumps(
-                {
-                    "score": ts.score,
-                    "grade": ts.grade,
-                    "verdict": ts.verdict,
-                    "sub_scores": ts.sub_scores,
-                    "weights_used": ts.weights_used,
-                    "breakdown": ts.breakdown,
-                    "is_partial": ts.is_partial,
-                    "missing_dimensions": ts.missing_dimensions,
-                    "blockers": ts.blockers,
-                    "caps_applied": ts.caps_applied,
-                    "base_score": ts.base_score,
-                    "score_version": ts.score_version,
-                    "deployment_explanation": self.deployment_explanation,
-                }
-            ),
-            encoding="utf-8",
-        )
-
-        # Save summary plot
-        try:
-            self.summary_plot(
-                save_path=str(out_dir / "summary_plot.png"),
-                show=False,
-            )
-        except Exception as exc:
-            logger.warning("Summary plot skipped: %s", exc)
-
-        # Save per-module plots
-        try:
-            self.plot(save_dir=str(out_dir))
-        except Exception as exc:
-            logger.warning("Plot generation skipped: %s", exc)
-
-        logger.info("Report bundle saved to: %s", out_dir)
-        return out_dir
-
-    def _save_regression(self, path: str, p: Path) -> Path:
-        """Save a regression report (results + metadata + regression Trust Score)."""
-        if path.lower().endswith(".json"):
-            p.parent.mkdir(parents=True, exist_ok=True)
-            data = {
-                "results": self._to_serializable(self.results),
-                "metadata": self.metadata,
-                "task_type": "regression",
-                "trust_score": self.trust_score.score,
-                "grade": self.trust_score.grade,
-                "sub_scores": self.trust_score.sub_scores,
-            }
-            p.write_text(self._dumps(data), encoding="utf-8")
-            logger.info("Regression report JSON saved to: %s", p)
-            return p
-        if path.lower().endswith(".txt"):
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(self._generate_text_report(), encoding="utf-8")
-            logger.info("Regression report TXT saved to: %s", p)
-            return p
+        # 3. Directory bundle: metrics, metadata, Trust Score (+ plots for classification)
         out_dir = p
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "report.json").write_text(self._dumps(self.results), encoding="utf-8")
         (out_dir / "metadata.json").write_text(self._dumps(self.metadata), encoding="utf-8")
-        ts = self.trust_score
         (out_dir / "trust_score.json").write_text(
-            self._dumps(
-                {
-                    "score": ts.score,
-                    "grade": ts.grade,
-                    "verdict": ts.verdict,
-                    "sub_scores": ts.sub_scores,
-                    "weights_used": ts.weights_used,
-                    "breakdown": ts.breakdown,
-                    "penalties_applied": ts.penalties_applied,
-                    "task_type": ts.task_type,
-                    "base_score": ts.base_score,
-                    "is_blocked": ts.is_blocked,
-                    "blockers": ts.blockers,
-                    "score_version": ts.score_version,
-                }
-            ),
-            encoding="utf-8",
+            self._dumps(self._trust_score_payload()), encoding="utf-8"
         )
-        logger.info("Regression report bundle saved to: %s", out_dir)
+        if is_classification:
+            try:
+                self.summary_plot(save_path=str(out_dir / "summary_plot.png"), show=False)
+            except Exception as exc:  # noqa: BLE001 - plots are optional artefacts
+                logger.warning("Summary plot skipped: %s", exc)
+            try:
+                self.plot(save_dir=str(out_dir))
+            except Exception as exc:  # noqa: BLE001 - plots are optional artefacts
+                logger.warning("Plot generation skipped: %s", exc)
+        logger.info("Report bundle saved to: %s", out_dir)
         return out_dir
+
+    def _trust_score_payload(self) -> dict[str, Any]:
+        """Every Trust Score field, for both task types (one serializer; GB-08)."""
+        ts = self.trust_score
+        payload: dict[str, Any] = {
+            "score": ts.score,
+            "grade": ts.grade,
+            "verdict": ts.verdict,
+            "task_type": ts.task_type,
+            "score_version": ts.score_version,
+            "sub_scores": ts.sub_scores,
+            "weights_used": ts.weights_used,
+            "breakdown": ts.breakdown,
+            "base_score": ts.base_score,
+            "is_blocked": ts.is_blocked,
+            "blockers": ts.blockers,
+            "caps_applied": ts.caps_applied,
+            "is_partial": ts.is_partial,
+            "missing_dimensions": ts.missing_dimensions,
+            "penalties_applied": ts.penalties_applied,
+        }
+        if self.task_type != "regression":
+            payload["deployment_explanation"] = self.deployment_explanation
+        return payload
 
     def to_dict(self) -> dict[str, Any]:
         """
