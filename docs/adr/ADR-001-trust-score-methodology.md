@@ -1,6 +1,6 @@
 # ADR-001: Trust Score methodology contract
 
-- **Status:** Accepted (interim rules for v0.5.x); Trust Score v2 redesign pending
+- **Status:** Accepted. Interim rules (v0.5.x) superseded by methodology 2.0 (§4)
 - **Date:** 2026-09-28
 - **Context source:** `audit/2026-09-trustlens-audit.md` (issues TL-01 to TL-31)
 
@@ -62,27 +62,45 @@ request.
 | Regression | Scoring uses unrounded error statistics. Rounding is applied only for display. |
 | Task detection | An integer-valued target with more than 20 distinct values and a high distinct-value ratio is treated as regression. A fitted scikit-learn regressor always routes to regression. |
 
-### 4. Deferred to Trust Score v2 (minor release, versioned)
+### 4. Methodology 2.0 (`score_version = "2.0"`)
 
-- **Calibration dimension (TL-05).** Base it on ECE, or on the reliability
-  component of Brier, instead of raw multiclass Brier.
-- **Failure dimension (TL-01, full fix).** Replace the mean confidence gap with
-  a ranking measure, such as the AUROC of confidence for correct versus wrong
-  predictions.
-- **Single mechanism per signal (TL-09).** No sub-score plus penalty plus
-  blocker for the same metric, and blockers aligned with the end of penalty
-  ramps.
-- **Bias dimension (TL-15).** Score it only when sensitive features are
-  supplied. Class imbalance becomes a warning.
-- **Versioning.** Add `score_version` to `TrustScoreResult` and to saved
-  reports, and publish a migration table for the reference models.
-- **Regression point-only reports.** Decide whether these count as partial.
-  They currently score on accuracy alone by design (RFC #145).
+Decided after the interim rules above. The formulas are in
+[Trust Score Explained](../trust_score_explained.md) and are pinned by
+`tests/invariants/test_formula_contract.py`.
+
+| Topic | Decision | Issue |
+|---|---|---|
+| Calibration dimension | Scored from ECE (`100 × clip(1 − ECE/0.25)`). Brier is reported but no longer scored, because the multiclass Brier range grows with K and mixes accuracy into calibration. | TL-05 |
+| Failure dimension | Scored from the error-detection AUROC of top-label confidence plus 20% accuracy. AUROC does not shrink with K or with accuracy, unlike the mean confidence gap. | TL-01 |
+| One mechanism per signal | No additive penalties. Each metric counts once, in its sub-score. `penalties_applied` stays empty for compatibility. The regression weak-correlation penalty is removed for the same reason. | TL-09 |
+| Blockers | Override the weighted score (AH-35): no predictive skill (accuracy not above the majority baseline), overconfidence error > 0.10, a fairness gap > 0.15, and the two existing regression blockers. Underconfidence does not block. | TL-09 |
+| Score and grade | Always consistent. Blocked results are capped at 39 (D), capped results at 59 (C). `base_score` keeps the uncapped weighted score. | TL-02, TL-03 |
+| Caps | Partial assessment, or any assessed sub-score below 40. | TL-03 |
+| Nothing assessable | Grade `N/A`, deployment verdict `INSUFFICIENT_EVIDENCE`, unless a blocker applies. | TL-02 |
+| Bias dimension | Scored only from fairness gaps when sensitive features are supplied. Class imbalance is reported, not scored. | TL-15 |
+| Versioning | `score_version` is stored in `TrustScoreResult`, report metadata and saved score files. v0.5.0 remains installable from PyPI for side-by-side comparison. | — |
+| Weights | Unknown keys and negative values raise `ValueError`. | TL-28 |
+| `compare()` | Takes display names, returns a structured result, excludes partial, blocked and grade-D reports, and warns when eligible reports were scored on different dimensions. | TL-11 |
+
+The reference model `wine · RandomForest` is 100% accurate but underconfident
+(ECE ≈ 0.12, overconfidence error 0). Its expected band was widened from {A} to
+{A, B}. B is the intended result: calibration is the flagged dimension, not a
+blocker.
+
+### 5. Open questions
+
+- Regression point-only reports score on accuracy alone (RFC #145) and are not
+  marked partial. Revisit this if users read such scores as complete.
+- The thresholds (0.25 ECE ramp, 0.30 gap ramp, 0.10 and 0.15 blockers, 40
+  weak-dimension cap) are judgment calls anchored on the reference models, not
+  statistically calibrated. Re-run the model-zoo benchmark notebook under 2.0
+  before publishing new research claims.
 
 ## Consequences
 
-- Scores change for affected models in v0.5.1. The CHANGELOG lists each change
-  with its issue ID.
+- Scores change for affected models: first with the interim fixes, and again
+  with methodology 2.0. See the before/after table in Trust Score Explained. The
+  CHANGELOG lists each change with its issue ID.
 - Consumers that relied on `tpr == 0.0` for groups without positives must
   handle `None`.
 - Stored reports from earlier versions keep their stored scores. Recomputing

@@ -35,9 +35,9 @@ Representation analysis is optional and depends on embedding quality.
 - No embeddings means no representation sub-score.
 - Poorly aligned embeddings can mislead separability interpretation.
 
-## Threshold and Penalty Design
+## Threshold Design
 
-Some trust-score thresholds and penalty boundaries are expert-designed heuristics.
+Trust-score ramps, blocker thresholds and caps are expert-designed heuristics (see ADR-001), not statistically calibrated values.
 
 - They are practical defaults, not universal constants.
 - Domain-specific validation is recommended before using hard release gates.

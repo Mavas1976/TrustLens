@@ -50,9 +50,9 @@ But behind those numbers, silent failures are lurking:
 | **Aggregate ROC-AUC** | **Fairness & Bias** | *Are minority groups experiencing higher failure rates?* |
 | **Loss Curve** | **Latent Space Health** | *Are the internal embeddings stable and separated?* |
 | **Manual Error Analysis** | **Failure Diagnostics** | *Are the errors concentrated at high confidence?* |
-| **"Looks good to me"** | **Deployment Verdict** | *Is this model mathematically safe to deploy?* |
+| **"Looks good to me"** | **Deployment Verdict** | *Does the evidence support deploying this model?* |
 
-TrustLens surfaces all these hidden risks with a single, statistically grounded audit, outputting a machine-readable deployment verdict.
+TrustLens surfaces all these hidden risks in a single audit built on established metrics (ECE, Brier, equalized odds, silhouette), with a machine-readable deployment verdict.
 
 ---
 
@@ -132,7 +132,7 @@ TrustLens evaluates your model through four distinct diagnostic modules, combini
 1.  **Calibration Engine**: Computes Expected Calibration Error (ECE) and Brier Score to detect confidence mismatch.
 2.  **Fairness Engine**: Evaluates Equalized Odds and Subgroup Performance gaps across sensitive features.
 3.  **Representation Engine**: Analyzes latent embedding separability (Silhouette, CKA) to ensure stable decision boundaries.
-4.  **Decision Engine**: Synthesizes the risks into a penalty-based Trust Score and a `Ready` / `Blocked` deployment verdict.
+4.  **Decision Engine**: Synthesizes the evidence into a versioned Trust Score (weighted sub-scores plus explicit blockers and caps) and a deployment verdict. The score is a heuristic summary, not a safety guarantee; see [Trust Score Explained](docs/trust_score_explained.md).
 
 ### The Prediction Resolver Architecture
 
@@ -148,9 +148,11 @@ We natively support:
 
 ## Scientific Validation
 
-TrustLens is more than a visualization package—it is a statistically grounded diagnostic framework. We have systematically validated its behavior across 6 model architectures and multiple data corruption scenarios (noise, imbalance, bias).
+TrustLens is more than a visualization package—it is a diagnostic framework built on established metrics. Its behavior was examined across 6 model architectures and multiple data corruption scenarios (noise, imbalance, bias).
 
 **Key Finding**: TrustLens empirically decouples **Accuracy** from **Trust**, accurately flagging high-accuracy models that exhibit high reliability risks (the "Overconfidence Zone").
+
+> The benchmark figures were produced with Trust Score methodology 1.x (v0.5.0). Methodology 2.0 changes scores; see [Trust Score Explained](docs/trust_score_explained.md#changes-from-methodology-1x-v050).
 
 >**[View the Model Zoo Benchmark](examples/trustlens_model_zoo_benchmark.ipynb)**
 

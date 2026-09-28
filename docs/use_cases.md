@@ -49,7 +49,7 @@ Trigger focused error review and retraining or recalibration cycle.
 Several candidates pass baseline accuracy and latency targets.
 
 **Diagnostic signal**
-`compare()` shows one candidate has lower penalty burden and no blockers.
+`compare()` ranks the complete, unblocked candidates and names each one's weakest dimension.
 
 **Decision impact**
 Select the safer candidate, even if raw accuracy is slightly lower.

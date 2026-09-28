@@ -31,6 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `audit/2026-09-trustlens-audit.md` (31 findings with reproduction scripts) and ADR-001 *Trust Score methodology contract* (`docs/adr/`).
 
 ### Changed
+- **Trust Score methodology 2.0 (`score_version = "2.0"`)**. The classification score is now the weighted mean of the assessed sub-scores, followed by blockers and caps. Each signal is counted once; the regression score keeps its dimensions but loses the second weak-correlation penalty (TL-09). See `docs/trust_score_explained.md` (formulas plus a v0.5.0 → 2.0 table for reference models) and ADR-001.
+  - Calibration is scored from ECE (`100 × clip(1 − ECE/0.25)`); multiclass Brier is reported but no longer scored (TL-05).
+  - Failure is scored from the new error-detection AUROC (`trustlens.metrics.failure.error_detection_auroc`) plus 20% accuracy (TL-01).
+  - Bias is scored only when `sensitive_features` are supplied, from the largest fairness gap; class imbalance is reported, not scored (TL-15).
+  - Blockers (grade D, score ≤ 39): no predictive skill (accuracy not above the majority baseline), overconfidence error > 0.10 (new `trustlens.metrics.calibration.overconfidence_error`), fairness gap > 0.15. Underconfidence no longer blocks.
+  - Caps (grade C, score ≤ 59): partial assessment or any sub-score below 40. The grade now always matches the score band; `base_score` keeps the uncapped score.
+  - New `TrustScoreResult` fields: `blockers`, `caps_applied`, `score_version`. Grade `N/A` with deployment verdict `INSUFFICIENT_EVIDENCE` when nothing could be scored. `penalties_applied` is always empty (deprecated).
+  - Custom weights with unknown keys or negative values raise `ValueError` (TL-28).
+  - `compare()` accepts `names=`, returns a structured result (`recommended`, `ranking`, `excluded`, `warnings`) and ranks by score with each candidate's weakest dimension instead of penalty burden (TL-11).
+  - Grade A verdict reads "High Trust - no critical issues detected" instead of "production-ready"; README claims toned down (TL-23).
 - **Score changes from the fixes above**: Trust Scores change for models affected by TL-01, TL-02, TL-04 and TL-06. Stored reports keep their stored scores; recomputing them can give different values. Characterization baselines were regenerated (only the failure sub-score and derived values moved).
 - **Behaviour change**: callers that relied on `tpr == 0.0` / `fpr == 0.0` for groups without positives / negatives must handle `None`.
 - **Test safety net**: `tests/invariants/` (score properties) and `tests/reference/` (deterministic sklearn reference models with expected grade bands) guard the methodology; remaining known defects are tracked as strict xfails tagged with their issue id.

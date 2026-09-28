@@ -11,7 +11,7 @@ Use this workflow when two or more models have similar accuracy and you need a r
 1. Train candidate models on the same train split.
 2. Run `analyze()` on each model using the same validation data.
 3. Compare trust reports with `compare()`.
-4. Review blocker status, penalties, and dimension-level differences.
+4. Review blockers, caps, excluded reports and dimension-level differences (`compare()` returns them).
 5. Select the candidate with highest safe trust profile, not only highest score.
 
 ## Example
@@ -28,8 +28,8 @@ compare([report_rf, report_lr])
 ## Decision Checklist
 
 - Are any candidates blocked from deployment?
-- Which model has lower failure penalty burden?
-- Are fairness penalties acceptable for your domain?
+- Which model has the stronger weakest dimension?
+- Are the fairness gaps acceptable for your domain?
 - Is calibration quality sufficient for confidence-based decisions?
 
 ## Recommended Output Artifacts

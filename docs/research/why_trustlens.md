@@ -1,5 +1,8 @@
 # Why TrustLens?
 
+> [!NOTE]
+> **Methodology version:** this walkthrough describes Trust Score methodology 1.x (TrustLens v0.5.0), which used additive penalties. Methodology 2.0 counts each signal once and uses blockers and caps instead; see [Trust Score Explained](../trust_score_explained.md).
+
 A common question from ML engineers is: *"Why should I use TrustLens instead of standard scikit-learn metrics like Accuracy, ROC-AUC, or Brier Score?"*
 
 The short answer: **Accuracy measures if a model is mathematically correct; TrustLens is designed to support the assessment of whether that model is safe to deploy.**

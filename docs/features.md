@@ -73,7 +73,7 @@ The trust scoring engine combines module outputs into one decision support signa
 
 - **Composite Score (0-100)** with a grade and deployment verdict.
 - **Weight Redistribution** when some modules are unavailable.
-- **Risk Penalties** applied for severe calibration, failure, and fairness conditions.
+- **Blockers and caps** for critical conditions (no predictive skill, overconfidence, severe fairness gaps, incomplete assessments); each signal is counted once.
 - **Deployment Blockers** that force a do-not-deploy verdict despite high raw score.
 
 For exact rules, see [Trust Score Explained](trust_score_explained.md).
