@@ -48,25 +48,25 @@ Status: **C** = onafhankelijk gereproduceerd door coördinator · **W** = aanget
 | TL-09 | HOOG | Correctheid | Signalen dubbel/driedubbel geteld (subscore + penalty + blocker) met klifeffect | M | 2 | W | Opgelost |
 | TL-10 | HOOG | Documentatie | Gedocumenteerde Trust-Score-formules wijken af van de code | S | 2 | C | Opgelost |
 | TL-11 | HOOG | Correctheid | compare() rangschikt niet-vergelijkbare rapporten en kan grade-D aanbevelen | M | 2 | W | Opgelost |
-| TL-12 | MIDDEN | Datakwaliteit | Inputvalidatie ontbreekt (lengtes, rijsommen y_prob, pandas-index, list/DataFrame y_prob) | S | 3 | W | Open |
-| TL-13 | MIDDEN | Correctheid | Labelafhandeling: manual-pad verliest classes_; conformal krijgt ongecodeerde labels | S | 3 | W | Open |
-| TL-14 | MIDDEN | Correctheid | Top-label ECE koppelt max(y_prob) aan y_pred i.p.v. argmax | S | 3 | W | Open |
+| TL-12 | MIDDEN | Datakwaliteit | Inputvalidatie ontbreekt (lengtes, rijsommen y_prob, pandas-index, list/DataFrame y_prob) | S | 3 | W | Opgelost |
+| TL-13 | MIDDEN | Correctheid | Labelafhandeling: manual-pad verliest classes_; conformal krijgt ongecodeerde labels | S | 3 | W | Opgelost |
+| TL-14 | MIDDEN | Correctheid | Top-label ECE koppelt max(y_prob) aan y_pred i.p.v. argmax | S | 3 | W | Opgelost (besluit) |
 | TL-15 | MIDDEN | Correctheid | 'Bias'-dimensie zonder sensitive features meet alleen klasse-onbalans van de data | S | 2 | W | Opgelost |
 | TL-16 | MIDDEN | Correctheid | CRPS-decompositie negeert observaties buiten buitenste kwantiel | M | 4 | W | Open |
-| TL-17 | MIDDEN | Architectuur | Ongetypeerd results-dict; ontbrekende metriek leest als perfecte 0.0 | M | 3 | W | Open |
-| TL-18 | MIDDEN | Architectuur | report.py is een god-object (2084 regels) | L | 3 | W | Open |
+| TL-17 | MIDDEN | Architectuur | Ongetypeerd results-dict; ontbrekende metriek leest als perfecte 0.0 | M | 3 | W | Opgelost |
+| TL-18 | MIDDEN | Architectuur | report.py is een god-object (2084 regels) | L | 3 | W | Opgelost |
 | TL-19 | MIDDEN | Testbaarheid | Tests controleren vooral aanwezigheid, niet waarden; geen invarianten | M | 0 | W | Opgelost |
-| TL-20 | MIDDEN | Correctheid | Brede except in plot_bias verbergt echte fout; voorbeeldscript crasht | S | 3 | E | Open |
+| TL-20 | MIDDEN | Correctheid | Brede except in plot_bias verbergt echte fout; voorbeeldscript crasht | S | 3 | E | Opgelost |
 | TL-21 | MIDDEN | Documentatie | Docs-build breekt met gedeclareerde extras; waarschuwingen; checklist-claim onjuist | S | 4 | E | Open |
 | TL-22 | MIDDEN | Documentatie | Documentatie loopt achter op code | S | 4 | E | Open |
 | TL-23 | MIDDEN | Documentatie | Sterke claims ('mathematically safe to deploy', 'production-ready') zonder gekalibreerde onderbouwing | S | 2 | E | Deels opgelost |
 | TL-24 | LAAG | Security | CI-hygiëne: shell-redirect in security-job, veel genegeerde CVE's, niet-gepinde actions, inconsistente mypy | S | 4 | E | Open |
 | TL-25 | LAAG | Testbaarheid | tests/backends/test_xgboost_logic.py importeert xgboost onvoorwaardelijk | S | 1 | C | Opgelost |
-| TL-26 | LAAG | Observability | print() ongeacht verbose; tqdm-bar naar stderr | S | 3 | C | Open |
-| TL-27 | LAAG | Datakwaliteit | save(): crasht op pathlib.Path, onbekende extensie wordt map, stil overschrijven | S | 3 | W | Open |
-| TL-28 | LAAG | Datakwaliteit | Publieke metriek-/gewicht-API valideert niet | S | 3 | W | Deels opgelost |
+| TL-26 | LAAG | Observability | print() ongeacht verbose; tqdm-bar naar stderr | S | 3 | C | Opgelost |
+| TL-27 | LAAG | Datakwaliteit | save(): crasht op pathlib.Path, onbekende extensie wordt map, stil overschrijven | S | 3 | W | Opgelost |
+| TL-28 | LAAG | Datakwaliteit | Publieke metriek-/gewicht-API valideert niet | S | 3 | W | Opgelost |
 | TL-29 | LAAG | Correctheid | Kleine metriekfouten buiten de Trust Score | S | 4 | W | Open |
-| TL-30 | LAAG | Architectuur | Koppeling: scoring importeert visualisatie; import laadt matplotlib; losse framework-detectie | S | 3 | W | Open |
+| TL-30 | LAAG | Architectuur | Koppeling: scoring importeert visualisatie; import laadt matplotlib; losse framework-detectie | S | 3 | W | Opgelost |
 | TL-31 | INFO | Correctheid | Grade-drempels gelden op afgeronde score; methodologie-print kapt percentages af | S | 4 | W | Open |
 
 ### Details
@@ -387,9 +387,9 @@ Uitgangspunt: **eerst een vangnet, dan pas de score veranderen.** Elke fix sluit
 | Injection-lekkage | Geen instructies uit broncode of documentatie overgenomen. |
 | Extrapolatie | Heat-map-scores en eindscore zijn gemarkeerd als [AFGELEID]. Er zijn geen claims gedaan over hoe vaak gebruikers de randgevallen raken. |
 
-## 9. Voortgang (fase 0–2)
+## 9. Voortgang (fase 0–3)
 
-Uitgevoerd op branch `claude/tender-cerf-4b5udn`. Na fase 2 (Trust Score-methodologie 2.0, onafhankelijk gereviewd): 629 tests groen, geen open xfails. Fase 3 (inputcontract en architectuur) en fase 4 (docs/CI) volgen.
+Uitgevoerd op branch `claude/tender-cerf-4b5udn`. Na fase 3 (inputcontract en architectuur): 656 tests groen, geen open xfails. Fase 2 introduceerde Trust Score-methodologie 2.0 (onafhankelijk gereviewd). Fase 4 (docs/CI en kleine metriekfouten) volgt.
 
 | ID | Status | Wat is gedaan |
 |---|---|---|
@@ -408,4 +408,13 @@ Uitgevoerd op branch `claude/tender-cerf-4b5udn`. Na fase 2 (Trust Score-methodo
 | TL-19 | Opgelost | tests/invariants, tests/reference en formulecontract; 629 tests, geen open xfails. |
 | TL-23 | Deels opgelost | README-claims afgezwakt, research-pagina's gemarkeerd als methodologie 1.x; benchmark-notebook nog niet opnieuw gedraaid. |
 | TL-25 | Opgelost | pytest.importorskip('xgboost'). |
-| TL-28 | Deels opgelost | Gewichten gevalideerd (onbekende keys, negatief, som 0); validatie van publieke metriek-API volgt in fase 3. |
+| TL-28 | Opgelost | Gewichten gevalideerd (fase 2); ECE/MCE/OCE weigeren lege, niet-eindige, out-of-range en niet-binaire invoer. |
+| TL-12 | Opgelost | Eén invoerlaag (core/inputs.py): lengtes met naam van het argument, rijsommen, pandas-index-waarschuwing, DataFrame/list-invoer, ontbrekende waarden als eigen groep. |
+| TL-13 | Opgelost | classes_ behouden of labels afleiden; duidelijke fout 'pass class_labels'; conformal met gecodeerde labels (coverage 0,357 → juist). |
+| TL-14 | Opgelost (besluit) | Eén correctheidsdefinitie voor alle top-label-maten (y_pred == y_true, confidence max(y_prob)) met waarschuwing als y_pred ≠ argmax; vastgelegd in ADR-001. |
+| TL-17 | Opgelost | results_schema.py met TypedDicts en check_results_contract() in de tests; overgeslagen modules tellen niet meer als perfecte 0,0. |
+| TL-18 | Opgelost | TrustReport opgesplitst in mixins (_report/text, plots, io, html, base); report.py 2.170 → ~330 regels; publieke API ongewijzigd. |
+| TL-20 | Opgelost | save_figure maakt mappen aan; plot_bias noemt de echte oorzaak; alle voorbeelden draaien vanuit een lege map. |
+| TL-26 | Opgelost | verbose=False print niets; tqdm-balk weg; demo-banner alleen bij demo-data. |
+| TL-27 | Opgelost | save(): PathLike, onbekende extensie → fout, overwrite=False, mappen met punt blijven werken. |
+| TL-30 | Opgelost | import trustlens laadt geen matplotlib meer; exacte framework-detectie; mypy-strictness-ratchet voor nieuwe modules. |
