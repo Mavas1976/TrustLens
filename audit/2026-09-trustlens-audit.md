@@ -52,22 +52,22 @@ Status: **C** = onafhankelijk gereproduceerd door coördinator · **W** = aanget
 | TL-13 | MIDDEN | Correctheid | Labelafhandeling: manual-pad verliest classes_; conformal krijgt ongecodeerde labels | S | 3 | W | Opgelost |
 | TL-14 | MIDDEN | Correctheid | Top-label ECE koppelt max(y_prob) aan y_pred i.p.v. argmax | S | 3 | W | Opgelost (besluit) |
 | TL-15 | MIDDEN | Correctheid | 'Bias'-dimensie zonder sensitive features meet alleen klasse-onbalans van de data | S | 2 | W | Opgelost |
-| TL-16 | MIDDEN | Correctheid | CRPS-decompositie negeert observaties buiten buitenste kwantiel | M | 4 | W | Open |
+| TL-16 | MIDDEN | Correctheid | CRPS-decompositie negeert observaties buiten buitenste kwantiel | M | 4 | W | Opgelost |
 | TL-17 | MIDDEN | Architectuur | Ongetypeerd results-dict; ontbrekende metriek leest als perfecte 0.0 | M | 3 | W | Opgelost |
 | TL-18 | MIDDEN | Architectuur | report.py is een god-object (2084 regels) | L | 3 | W | Opgelost |
 | TL-19 | MIDDEN | Testbaarheid | Tests controleren vooral aanwezigheid, niet waarden; geen invarianten | M | 0 | W | Opgelost |
 | TL-20 | MIDDEN | Correctheid | Brede except in plot_bias verbergt echte fout; voorbeeldscript crasht | S | 3 | E | Opgelost |
-| TL-21 | MIDDEN | Documentatie | Docs-build breekt met gedeclareerde extras; waarschuwingen; checklist-claim onjuist | S | 4 | E | Open |
-| TL-22 | MIDDEN | Documentatie | Documentatie loopt achter op code | S | 4 | E | Open |
+| TL-21 | MIDDEN | Documentatie | Docs-build breekt met gedeclareerde extras; waarschuwingen; checklist-claim onjuist | S | 4 | E | Opgelost |
+| TL-22 | MIDDEN | Documentatie | Documentatie loopt achter op code | S | 4 | E | Opgelost |
 | TL-23 | MIDDEN | Documentatie | Sterke claims ('mathematically safe to deploy', 'production-ready') zonder gekalibreerde onderbouwing | S | 2 | E | Deels opgelost |
-| TL-24 | LAAG | Security | CI-hygiëne: shell-redirect in security-job, veel genegeerde CVE's, niet-gepinde actions, inconsistente mypy | S | 4 | E | Open |
+| TL-24 | LAAG | Security | CI-hygiëne: shell-redirect in security-job, veel genegeerde CVE's, niet-gepinde actions, inconsistente mypy | S | 4 | E | Opgelost |
 | TL-25 | LAAG | Testbaarheid | tests/backends/test_xgboost_logic.py importeert xgboost onvoorwaardelijk | S | 1 | C | Opgelost |
 | TL-26 | LAAG | Observability | print() ongeacht verbose; tqdm-bar naar stderr | S | 3 | C | Opgelost |
 | TL-27 | LAAG | Datakwaliteit | save(): crasht op pathlib.Path, onbekende extensie wordt map, stil overschrijven | S | 3 | W | Opgelost |
 | TL-28 | LAAG | Datakwaliteit | Publieke metriek-/gewicht-API valideert niet | S | 3 | W | Opgelost |
-| TL-29 | LAAG | Correctheid | Kleine metriekfouten buiten de Trust Score | S | 4 | W | Open |
+| TL-29 | LAAG | Correctheid | Kleine metriekfouten buiten de Trust Score | S | 4 | W | Opgelost |
 | TL-30 | LAAG | Architectuur | Koppeling: scoring importeert visualisatie; import laadt matplotlib; losse framework-detectie | S | 3 | W | Opgelost |
-| TL-31 | INFO | Correctheid | Grade-drempels gelden op afgeronde score; methodologie-print kapt percentages af | S | 4 | W | Open |
+| TL-31 | INFO | Correctheid | Grade-drempels gelden op afgeronde score; methodologie-print kapt percentages af | S | 4 | W | Opgelost |
 
 ### Details
 
@@ -387,9 +387,9 @@ Uitgangspunt: **eerst een vangnet, dan pas de score veranderen.** Elke fix sluit
 | Injection-lekkage | Geen instructies uit broncode of documentatie overgenomen. |
 | Extrapolatie | Heat-map-scores en eindscore zijn gemarkeerd als [AFGELEID]. Er zijn geen claims gedaan over hoe vaak gebruikers de randgevallen raken. |
 
-## 9. Voortgang (fase 0–3)
+## 9. Voortgang (fase 0–4)
 
-Uitgevoerd op branch `claude/tender-cerf-4b5udn`. Na fase 3 (inputcontract en architectuur): 656 tests groen, geen open xfails. Fase 2 introduceerde Trust Score-methodologie 2.0 (onafhankelijk gereviewd). Fase 4 (docs/CI en kleine metriekfouten) volgt.
+Uitgevoerd op branch `claude/tender-cerf-4b5udn`. Alle vier fasen uitgevoerd: 662 tests groen, geen open xfails, docs bouwen met -W, alle voorbeelden draaien vanuit een lege map. Open: TL-23 (benchmark-notebook opnieuw draaien) en de geërfde pip-audit-uitzonderingen (inhoudelijke review vóór 2026-12-31).
 
 | ID | Status | Wat is gedaan |
 |---|---|---|
@@ -406,7 +406,7 @@ Uitgevoerd op branch `claude/tender-cerf-4b5udn`. Na fase 3 (inputcontract en ar
 | TL-11 | Opgelost | compare(): names=, gestructureerd resultaat, sluit partial/blocked/D uit, waarschuwt bij ongelijke dimensies en gelijke scores. |
 | TL-15 | Opgelost | Bias-dimensie alleen met sensitive features; klasse-onbalans gerapporteerd, niet gescoord. |
 | TL-19 | Opgelost | tests/invariants, tests/reference en formulecontract; 629 tests, geen open xfails. |
-| TL-23 | Deels opgelost | README-claims afgezwakt, research-pagina's gemarkeerd als methodologie 1.x; benchmark-notebook nog niet opnieuw gedraaid. |
+| TL-23 | Deels opgelost | Claims afgezwakt en research-pagina's gemarkeerd als methodologie 1.x; het model-zoo-notebook is niet opnieuw gedraaid. |
 | TL-25 | Opgelost | pytest.importorskip('xgboost'). |
 | TL-28 | Opgelost | Gewichten gevalideerd (fase 2); ECE/MCE/OCE weigeren lege, niet-eindige, out-of-range en niet-binaire invoer. |
 | TL-12 | Opgelost | Eén invoerlaag (core/inputs.py): lengtes met naam van het argument, rijsommen, pandas-index-waarschuwing, DataFrame/list-invoer, ontbrekende waarden als eigen groep. |
@@ -418,3 +418,9 @@ Uitgevoerd op branch `claude/tender-cerf-4b5udn`. Na fase 3 (inputcontract en ar
 | TL-26 | Opgelost | verbose=False print niets; tqdm-balk weg; demo-banner alleen bij demo-data. |
 | TL-27 | Opgelost | save(): PathLike, onbekende extensie → fout, overwrite=False, mappen met punt blijven werken. |
 | TL-30 | Opgelost | import trustlens laadt geen matplotlib meer; exacte framework-detectie; mypy-strictness-ratchet voor nieuwe modules. |
+| TL-16 | Opgelost | Hersbach-uitschietersegmenten; y=100 vs N(0,1): CRPS 1,0 → 94,6 (referentie 94,5); afwijking t.o.v. trapezium −2,0%..+0,8% bij 19 niveaus. |
+| TL-21 | Opgelost | mermaid in [docs]-extra, conformal in toctree, _static aanwezig; sphinx -W slaagt en draait in CI. |
+| TL-22 | Opgelost | API-referentie compleet; statische test/coverage-badges verwijderd (Codecov had geen data); ROADMAP (MCE) en SECURITY.md gecorrigeerd. |
+| TL-24 | Opgelost | Actions op SHA + Dependabot; mistune-redirect gefixt; ignore-lijst met reden en vervaldatum (geërfde items gemarkeerd als niet beoordeeld); docs- en examples-jobs; één mypy-aanroep. |
+| TL-29 | Opgelost | Geen self-pairs in within-class-afstand; CKA schaalinvariant; Brier- en CRPS-docstrings gecorrigeerd. |
+| TL-31 | Opgelost | Gewichten afgerond i.p.v. afgekapt; afronding van grade-drempels gedocumenteerd. |

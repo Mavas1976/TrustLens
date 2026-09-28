@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location(
     "check_audit_ignores", ROOT / "scripts/check_audit_ignores.py"
 )
+assert spec is not None and spec.loader is not None
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
