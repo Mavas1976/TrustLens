@@ -127,3 +127,63 @@ def test_verbose_false_prints_nothing(capsys):
     assert captured.out == ""
     analyze(None, None, y, y_pred=y_pred, y_prob=y_prob, verbose=True)
     assert "Running calibration analysis" in capsys.readouterr().out
+
+
+def test_top_label_metrics_use_argmax_not_thresholded_predictions(caplog):
+    """GA-03 / TL-14: ECE judges argmax(y_prob), and a differing y_pred is reported."""
+    from trustlens.metrics.calibration import expected_calibration_error
+
+    y, _, y_prob = _binary()
+    argmax = y_prob.argmax(axis=1)
+    y_pred = np.where(np.arange(N) % 3 == 0, 1 - argmax, argmax)  # a third disagree
+    with caplog.at_level(logging.WARNING, logger="trustlens.core.pipeline"):
+        report = analyze(None, None, y, y_pred=y_pred, y_prob=y_prob, verbose=False)
+    assert "differs from argmax" in caplog.text
+    assert report.results["failure"]["confidence_auroc"] is not None
+    k = rng.integers(0, 3, N)
+    multi = rng.dirichlet(np.ones(3), N)
+    top = multi.argmax(axis=1)
+    multi_report = analyze(
+        None,
+        None,
+        k,
+        y_pred=np.where(np.arange(N) % 2 == 0, (top + 1) % 3, top),
+        y_prob=multi,
+        verbose=False,
+    )
+    multi_expected = expected_calibration_error((top == k).astype(float), multi.max(axis=1))
+    assert multi_report.results["calibration"]["ece"] == pytest.approx(multi_expected)
+
+
+def test_swapped_probability_columns_are_reported(caplog):
+    """GA-03: columns in the wrong order make y_pred disagree with argmax."""
+    y, y_pred, y_prob = _binary()
+    with caplog.at_level(logging.WARNING, logger="trustlens.core.pipeline"):
+        analyze(None, None, y, y_pred=y_pred, y_prob=y_prob[:, ::-1], verbose=False)
+    assert "differs from argmax" in caplog.text
+
+
+@pytest.mark.parametrize("task", ["classification", "regression"])
+def test_non_finite_targets_are_rejected(task):
+    """GA-07: NaN targets raise instead of producing NaN scores and invalid JSON."""
+    y = rng.normal(size=N) if task == "regression" else rng.integers(0, 2, N).astype(float)
+    y[5] = np.nan
+    with pytest.raises(ValueError, match="non-finite"):
+        analyze(None, None, y, y_pred=np.zeros(N), task=task, verbose=False)
+
+
+def test_numeric_sensitive_feature_with_nan_forms_missing_group():
+    """GB-04: NaN in a float feature must not crash on mixed str/float sorting."""
+    y, y_pred, y_prob = _binary()
+    feature = rng.normal(size=N).round(0)
+    feature[:10] = np.nan
+    report = analyze(
+        None,
+        None,
+        y,
+        y_pred=y_pred,
+        y_prob=y_prob,
+        sensitive_features={"f": feature},
+        verbose=False,
+    )
+    assert "<missing>" in report.results["bias"]["subgroup_performance"]["f"]

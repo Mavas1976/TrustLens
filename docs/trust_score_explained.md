@@ -86,11 +86,13 @@ must use these keys and be non-negative.
 - **Weak dimension**: any assessed sub-score below 40.
 
 Top-label measures (multiclass ECE, overconfidence error, error-detection
-AUROC) all treat a prediction as correct when `y_pred == y_true` and use
-`max(y_prob)` as its confidence. A warning is logged when `y_pred` differs from
-`argmax(y_prob)` for more than 1% of samples. Binary calibration is scored with
-the positive-class ECE, the standard binary definition. It is numerically close
-to, but not identical with, the top-label ECE used for multiclass.
+AUROC) judge the probabilities' own prediction: a sample counts as correct
+when `argmax(y_prob)` equals `y_true`, with confidence `max(y_prob)`. Accuracy,
+the error rate and the no-skill baseline describe the reported `y_pred`. A
+warning is logged when `y_pred` differs from `argmax(y_prob)` for more than 1%
+of samples, which also catches probability columns in the wrong order. Binary
+calibration is scored with the positive-class ECE, the standard binary
+definition; ECE uses 10 equal-width bins on [0, 1].
 
 Results saved before methodology 2.0 lack the error-detection AUROC and the
 overconfidence error. Scoring them warns, falls back to the normalised

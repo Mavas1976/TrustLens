@@ -9,7 +9,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -79,7 +79,7 @@ class PersistenceMixin(ReportBase):
                 "sub_scores": self.trust_score.sub_scores,
                 "deployment_explanation": self.deployment_explanation,
             }
-            p.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            p.write_text(self._dumps(data), encoding="utf-8")
             logger.info("Unified Report JSON saved to: %s", p)
             return p
 
@@ -96,20 +96,20 @@ class PersistenceMixin(ReportBase):
 
         # Serialize metrics
         (out_dir / "report.json").write_text(
-            json.dumps(self._to_serializable(self.results), indent=2),
+            self._dumps(self.results),
             encoding="utf-8",
         )
 
         # Serialize metadata
         (out_dir / "metadata.json").write_text(
-            json.dumps(self.metadata, indent=2),
+            self._dumps(self.metadata),
             encoding="utf-8",
         )
 
         # Serialize trust score
         ts = self.trust_score
         (out_dir / "trust_score.json").write_text(
-            json.dumps(
+            self._dumps(
                 {
                     "score": ts.score,
                     "grade": ts.grade,
@@ -124,8 +124,7 @@ class PersistenceMixin(ReportBase):
                     "base_score": ts.base_score,
                     "score_version": ts.score_version,
                     "deployment_explanation": self.deployment_explanation,
-                },
-                indent=2,
+                }
             ),
             encoding="utf-8",
         )
@@ -160,7 +159,7 @@ class PersistenceMixin(ReportBase):
                 "grade": self.trust_score.grade,
                 "sub_scores": self.trust_score.sub_scores,
             }
-            p.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            p.write_text(self._dumps(data), encoding="utf-8")
             logger.info("Regression report JSON saved to: %s", p)
             return p
         if path.lower().endswith(".txt"):
@@ -170,15 +169,11 @@ class PersistenceMixin(ReportBase):
             return p
         out_dir = p
         out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "report.json").write_text(
-            json.dumps(self._to_serializable(self.results), indent=2), encoding="utf-8"
-        )
-        (out_dir / "metadata.json").write_text(
-            json.dumps(self.metadata, indent=2), encoding="utf-8"
-        )
+        (out_dir / "report.json").write_text(self._dumps(self.results), encoding="utf-8")
+        (out_dir / "metadata.json").write_text(self._dumps(self.metadata), encoding="utf-8")
         ts = self.trust_score
         (out_dir / "trust_score.json").write_text(
-            json.dumps(
+            self._dumps(
                 {
                     "score": ts.score,
                     "grade": ts.grade,
@@ -188,8 +183,11 @@ class PersistenceMixin(ReportBase):
                     "breakdown": ts.breakdown,
                     "penalties_applied": ts.penalties_applied,
                     "task_type": ts.task_type,
-                },
-                indent=2,
+                    "base_score": ts.base_score,
+                    "is_blocked": ts.is_blocked,
+                    "blockers": ts.blockers,
+                    "score_version": ts.score_version,
+                }
             ),
             encoding="utf-8",
         )
@@ -223,9 +221,10 @@ class PersistenceMixin(ReportBase):
             flat["trustlens_version"] = self.metadata["trustlens_version"]
             flat["trust_score"] = self.trust_score.score
             flat["trust_grade"] = self.trust_score.grade
+            flat["trust_score_version"] = self.trust_score.score_version
             for dim, score in self.trust_score.sub_scores.items():
                 flat[f"trust_{dim}_score"] = score
-            return flat
+            return cast(dict[str, Any], self._to_serializable(flat))
 
         flat["trust_score"] = self.trust_score.score
         flat["trust_grade"] = self.trust_score.grade
@@ -242,20 +241,33 @@ class PersistenceMixin(ReportBase):
             exp["primary_risk"].get("value") if exp["primary_risk"] else None
         )
 
+        flat["trust_score_version"] = self.trust_score.score_version
+        flat["trust_partial"] = self.trust_score.is_partial
         for dim, score in self.trust_score.sub_scores.items():
             flat[f"trust_{dim}_score"] = score
-        return flat
+        return cast(dict[str, Any], self._to_serializable(flat))
 
     def _to_serializable(self, obj: Any) -> Any:
-        """Recursively convert numpy / non-JSON-native types."""
+        """Recursively convert numpy / non-JSON-native types.
+
+        Non-finite floats (NaN, +/-inf) become ``None``: ``json.dumps`` would
+        otherwise emit ``NaN``/``Infinity``, which is not valid JSON (GB-16).
+        """
         if isinstance(obj, dict):
             return {k: self._to_serializable(v) for k, v in obj.items()}
         if isinstance(obj, (list, tuple)):
             return [self._to_serializable(v) for v in obj]
         if isinstance(obj, np.ndarray):
-            return obj.tolist()
+            return self._to_serializable(obj.tolist())
+        if isinstance(obj, (bool, np.bool_)):
+            return bool(obj)
         if isinstance(obj, np.integer):
             return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
+        if isinstance(obj, (float, np.floating)):
+            value = float(obj)
+            return value if np.isfinite(value) else None
         return obj
+
+    def _dumps(self, obj: Any) -> str:
+        """Strict JSON: serialisable types only, never NaN/Infinity tokens."""
+        return json.dumps(self._to_serializable(obj), indent=2, allow_nan=False)

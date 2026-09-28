@@ -53,6 +53,15 @@ def _as_1d(values: Any, name: str) -> np.ndarray:
     return arr
 
 
+def _require_finite(arr: np.ndarray, name: str) -> None:
+    """Targets and predictions must not contain NaN/Inf (GA-07)."""
+    if arr.dtype.kind == "f" and not np.all(np.isfinite(arr)):
+        bad = int(np.sum(~np.isfinite(arr)))
+        raise ValueError(
+            f"{name} contains {bad} non-finite value(s) (NaN or Inf); remove or impute them first."
+        )
+
+
 def _pandas_index(values: Any) -> Optional[Any]:
     index = getattr(values, "index", None)
     return index if index is not None and hasattr(values, "iloc") else None
@@ -126,6 +135,9 @@ def _prepare_sensitive_features(features: Any) -> Optional[dict[str, np.ndarray]
                 int(missing.sum()),
                 MISSING_GROUP,
             )
+            # Mixed str/float values cannot be sorted by np.unique, so all
+            # group values become strings once a missing group exists (GB-04).
+            arr = np.array([str(v) for v in arr], dtype=object)
             arr[missing] = MISSING_GROUP
         prepared[str(name)] = arr
     return prepared
@@ -172,7 +184,10 @@ def prepare_inputs(
     _warn_on_index_mismatch({k: v for k, v in named.items() if v is not None})
 
     y_true_arr = _as_1d(y_true, "y_true")
+    _require_finite(y_true_arr, "y_true")
     y_pred_arr = _as_1d(y_pred, "y_pred") if y_pred is not None else None
+    if y_pred_arr is not None:
+        _require_finite(y_pred_arr, "y_pred")
     y_prob_arr = None
     if y_prob is not None:
         if task == "regression":

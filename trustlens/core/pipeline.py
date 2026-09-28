@@ -63,31 +63,41 @@ logger = logging.getLogger(__name__)
 _MIN_FAIRNESS_GROUP_SIZE = 30
 
 
-def _top_label_overconfidence(y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray) -> float:
-    """Overconfidence error of the reported predictions against their top-label confidence.
+def _argmax_labels(y_prob: np.ndarray, class_labels: Optional[np.ndarray]) -> np.ndarray:
+    """Labels of the most probable class per sample, in the label space of y_true.
 
-    Uses the same correctness definition as the multiclass ECE and the
-    error-detection AUROC: ``y_pred == y_true`` with confidence ``max(y_prob)``.
+    Top-label calibration and error detection judge the probabilities'
+    own prediction ``argmax(y_prob)``, not a separately thresholded ``y_pred``
+    (TL-14). Without ``class_labels`` the labels are the column indices, which
+    the label encoder already requires in that case.
     """
+    index = np.argmax(y_prob, axis=1) if y_prob.ndim == 2 else (y_prob >= 0.5).astype(int)
+    if class_labels is not None and len(class_labels) == (
+        y_prob.shape[1] if y_prob.ndim == 2 else 2
+    ):
+        return np.asarray(class_labels)[index]
+    return index
+
+
+def _top_label_overconfidence(
+    y_true: np.ndarray, top_label: np.ndarray, y_prob: np.ndarray
+) -> float:
+    """Overconfidence error of the top-label prediction against its confidence ``max(y_prob)``."""
     confidence = np.max(y_prob, axis=1) if y_prob.ndim == 2 else np.maximum(y_prob, 1.0 - y_prob)
     return overconfidence_error(
-        (np.asarray(y_true) == np.asarray(y_pred)).astype(float), confidence
+        (np.asarray(y_true) == np.asarray(top_label)).astype(float), confidence
     )
 
 
-def _warn_if_pred_differs_from_argmax(
-    y_pred: np.ndarray, y_prob: np.ndarray, class_labels: Optional[np.ndarray]
-) -> None:
-    """Top-label metrics assume y_pred is the most probable class; say so when it is not."""
-    if y_prob.ndim != 2 or class_labels is None or len(class_labels) != y_prob.shape[1]:
-        return
-    argmax_labels = np.asarray(class_labels)[np.argmax(y_prob, axis=1)]
-    share = float(np.mean(argmax_labels != np.asarray(y_pred)))
+def _warn_if_pred_differs_from_argmax(y_pred: np.ndarray, top_label: np.ndarray) -> None:
+    """Say so when the reported decisions are not the most probable class."""
+    share = float(np.mean(np.asarray(top_label) != np.asarray(y_pred)))
     if share > 0.01:
         logger.warning(
-            "y_pred differs from argmax(y_prob) for %.1f%% of samples; confidence-based "
-            "metrics (ECE, overconfidence, error-detection AUROC) use max(y_prob) as the "
-            "confidence of y_pred.",
+            "y_pred differs from argmax(y_prob) for %.1f%% of samples. Accuracy and error "
+            "rates describe y_pred; confidence-based metrics (top-label ECE, overconfidence, "
+            "error-detection AUROC) describe argmax(y_prob). Check that probability columns "
+            "are in class order.",
             100 * share,
         )
 
@@ -211,7 +221,8 @@ def _run_analysis_pipeline(
     # 2. Calibration module
     # ------------------------------------------------------------------
     if y_prob is not None:
-        _warn_if_pred_differs_from_argmax(y_pred, y_prob, class_labels)
+        top_label = _argmax_labels(y_prob, class_labels)
+        _warn_if_pred_differs_from_argmax(y_pred, top_label)
 
     if "calibration" in active_modules:
         if y_prob is not None:
@@ -222,7 +233,7 @@ def _run_analysis_pipeline(
                 # MULTICLASS: Top-label calibration (ECE) and Multiclass Brier Score
                 n_classes = y_prob.shape[1]
                 confidences = np.max(y_prob, axis=1)
-                correct_mask = (y_true == y_pred).astype(float)
+                correct_mask = (y_true == top_label).astype(float)
 
                 # Multiclass Brier Score: 1/N * sum(sum((p_ic - o_ic)^2))
                 # We can compute this efficiently
@@ -236,7 +247,7 @@ def _run_analysis_pipeline(
                     "brier_score": float(mbrier),
                     "ece": expected_calibration_error(correct_mask, confidences),
                     "mce": maximum_calibration_error(correct_mask, confidences),
-                    "overconfidence_error": _top_label_overconfidence(y_true, y_pred, y_prob),
+                    "overconfidence_error": _top_label_overconfidence(y_true, top_label, y_prob),
                     "n_samples": int(len(y_true)),
                     "reliability_curve": reliability_curve(correct_mask, confidences),
                 }
@@ -253,7 +264,7 @@ def _run_analysis_pipeline(
                     "brier_score": brier_score(y_true_encoded, y_prob_pos),
                     "ece": expected_calibration_error(y_true_encoded, y_prob_pos),
                     "mce": maximum_calibration_error(y_true_encoded, y_prob_pos),
-                    "overconfidence_error": _top_label_overconfidence(y_true, y_pred, y_prob),
+                    "overconfidence_error": _top_label_overconfidence(y_true, top_label, y_prob),
                     "n_samples": int(len(y_true)),
                     "reliability_curve": reliability_curve(y_true_encoded, y_prob_pos),
                 }
@@ -317,7 +328,7 @@ def _run_analysis_pipeline(
             results["failure"] = {
                 "misclassification_summary": misclassification_summary(y_true, y_pred, y_prob),
                 "confidence_gap": confidence_gap(y_true, y_pred, y_prob),
-                "confidence_auroc": error_detection_auroc(y_true, y_pred, y_prob),
+                "confidence_auroc": error_detection_auroc(y_true, top_label, y_prob),
                 "n_classes": int(y_prob.shape[1]) if y_prob.ndim == 2 else 2,
                 **_accuracy_and_baseline(y_true, y_pred),
             }

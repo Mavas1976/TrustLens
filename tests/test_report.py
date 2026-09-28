@@ -104,3 +104,60 @@ class TestSaveRobustness:
         target = tmp_path / "nested" / "deeper" / "summary.png"
         report.summary_plot(save_path=str(target), show=False)
         assert target.is_file()
+
+
+class TestStrictJson:
+    """GB-16 / GA-09: saved output is strict JSON and carries the methodology version."""
+
+    def _strict(self, text):
+        def reject(token):
+            raise ValueError(f"non-standard JSON token {token}")
+
+        return json.loads(text, parse_constant=reject)
+
+    def test_non_finite_values_become_null(self, tmp_path):
+        import numpy as np
+
+        from trustlens import analyze
+
+        y = np.array([0, 1] * 60)
+        p = np.where(y == 1, 0.8, 0.2)
+        emb = np.column_stack([y, 1 - y]).astype(float)  # zero within-class spread -> inf ratio
+        report = analyze(
+            None,
+            None,
+            y,
+            y_pred=y,
+            y_prob=np.column_stack([1 - p, p]),
+            embeddings=emb,
+            verbose=False,
+        )
+        assert not np.isfinite(
+            report.results["representation"]["separability"]["separability_ratio"]
+        )
+        saved = self._strict(report.save(tmp_path / "r.json").read_text())
+        assert saved["results"]["representation"]["separability"]["separability_ratio"] is None
+        bundle = report.save(tmp_path / "bundle")
+        for name in ("report.json", "metadata.json", "trust_score.json"):
+            self._strict((bundle / name).read_text())
+        json.dumps(report.to_dict(), allow_nan=False)
+        assert report.to_dict()["trust_score_version"] == report.trust_score.score_version
+
+    def test_regression_outputs_carry_score_version(self, tmp_path):
+        import numpy as np
+
+        from trustlens import analyze
+
+        rng = np.random.default_rng(0)
+        y = rng.normal(size=200)
+        report = analyze(
+            None,
+            None,
+            y,
+            y_pred=y + rng.normal(scale=0.3, size=200),
+            task="regression",
+            verbose=False,
+        )
+        saved = self._strict((report.save(tmp_path / "reg") / "trust_score.json").read_text())
+        assert saved["score_version"] == report.trust_score.score_version
+        assert report.to_dict()["trust_score_version"] == report.trust_score.score_version
