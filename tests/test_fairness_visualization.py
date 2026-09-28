@@ -356,3 +356,18 @@ class TestNonBreaking:
         report = analyze(trained_rf, X, y, verbose=False)
         # Should not raise
         report.plot(save_dir=None)
+
+
+def test_equalized_odds_plots_handle_undefined_rates():
+    """TL-06: undefined TPR/FPR (None) render as n/a instead of crashing."""
+    import numpy as np
+
+    from trustlens.metrics.bias import equalized_odds
+    from trustlens.visualization.fairness import plot_equalized_odds, plot_fairness_gap
+
+    y_true = np.array([0, 0, 1, 1])
+    y_pred = np.array([0, 1, 1, 0])
+    data = equalized_odds(y_true, y_pred, {"g": np.array([0, 0, 1, 1])})["g"]
+    assert data["0"]["tpr"] is None
+    assert plot_equalized_odds(data, "g", show=False) is not None
+    assert plot_fairness_gap(data, "g", show=False) is not None

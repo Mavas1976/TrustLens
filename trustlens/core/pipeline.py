@@ -56,6 +56,11 @@ from trustlens.report import TrustReport
 logger = logging.getLogger(__name__)
 
 
+# Subgroups smaller than this carry too little evidence for a fairness gap: they
+# are reported with ``low_support`` and excluded from gaps (ADR-001, TL-06).
+_MIN_FAIRNESS_GROUP_SIZE = 30
+
+
 def _as_python_label(label: Any) -> Any:
     """Return a hashable Python scalar for NumPy scalar labels."""
     return label.item() if hasattr(label, "item") else label
@@ -277,7 +282,7 @@ def _run_analysis_pipeline(
         }
         if sensitive_features:
             results["bias"]["subgroup_performance"] = subgroup_performance(
-                y_true, y_pred, sensitive_features
+                y_true, y_pred, sensitive_features, min_group_size=_MIN_FAIRNESS_GROUP_SIZE
             )
             # Equalized odds requires a binary target (0, 1) and features with >1 subgroup
             is_binary = set(np.unique(y_true)).issubset({0, 1})
@@ -288,7 +293,7 @@ def _run_analysis_pipeline(
             if is_binary and meaningful_features:
                 try:
                     results["bias"]["equalized_odds"] = equalized_odds(
-                        y_true, y_pred, meaningful_features
+                        y_true, y_pred, meaningful_features, min_group_size=_MIN_FAIRNESS_GROUP_SIZE
                     )
                 except Exception as e:
                     logger.warning("Skipped equalized_odds computation: %s", e)

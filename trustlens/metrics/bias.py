@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import Optional
 
 import numpy as np
-from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, recall_score
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
 
 __all__ = [
     "class_imbalance_report",
@@ -88,6 +88,7 @@ def subgroup_performance(
     y_pred: np.ndarray,
     sensitive_features: dict[str, np.ndarray],
     metrics: Optional[list[str]] = None,
+    min_group_size: int = 1,
 ) -> dict:
     """
     Compute model performance broken down by sensitive subgroups.
@@ -108,6 +109,10 @@ def subgroup_performance(
     metrics : list[str], optional
       Which metrics to compute. Supports ``"accuracy"`` and ``"f1"``.
       Default: ``["accuracy", "f1"]``.
+    min_group_size : int, default=1
+      Groups with fewer samples are reported with ``low_support: True`` and
+      excluded from the performance gap, which is ``None`` when fewer than two
+      groups are eligible. The analysis pipeline uses 30.
 
     Returns
     -------
@@ -159,17 +164,26 @@ def subgroup_performance(
 
             group_results[str(g)] = group_metrics
 
-        # Compute performance gap (accuracy-based)
+        for g_metrics in group_results.values():
+            if g_metrics["n_samples"] < min_group_size:
+                g_metrics["low_support"] = True
+
+        # Compute performance gap (accuracy-based) over groups with enough support
         if "accuracy" in metrics and len(group_results) >= 2:
-            accuracies = [v["accuracy"] for v in group_results.values()]
-            gap = round(max(accuracies) - min(accuracies), 4)
-            best_group = max(group_results, key=lambda g: group_results[g].get("accuracy", 0))
-            worst_group = min(group_results, key=lambda g: group_results[g].get("accuracy", 0))
-            group_results["__summary__"] = {
-                "performance_gap": gap,
-                "best_group": best_group,
-                "worst_group": worst_group,
-            }
+            eligible = {g: v for g, v in group_results.items() if not v.get("low_support")}
+            if len(eligible) >= 2:
+                accuracies = [v["accuracy"] for v in eligible.values()]
+                summary: dict = {
+                    "performance_gap": round(max(accuracies) - min(accuracies), 4),
+                    "best_group": max(eligible, key=lambda g: eligible[g]["accuracy"]),
+                    "worst_group": min(eligible, key=lambda g: eligible[g]["accuracy"]),
+                }
+            else:
+                summary = {"performance_gap": None, "best_group": None, "worst_group": None}
+            excluded = sorted(set(group_results) - set(eligible))
+            if excluded:
+                summary["excluded_groups"] = excluded
+            group_results["__summary__"] = summary
 
         report[feature_name] = group_results
 
@@ -182,6 +196,7 @@ def equalized_odds(
     sensitive_features: dict[str, np.ndarray],
     severe_threshold: float = 0.15,
     moderate_threshold: float = 0.05,
+    min_group_size: int = 1,
 ) -> dict:
     """
     Compute Equalized Odds fairness metrics broken down by sensitive subgroups.
@@ -231,8 +246,16 @@ def equalized_odds(
 
         Per-group keys:
           * ``n_samples``  — number of samples in the group
-          * ``tpr``        — True Positive Rate (recall)
-          * ``fpr``        — False Positive Rate (FP / (FP + TN))
+          * ``tpr``        — True Positive Rate (recall); ``None`` when the group
+            has no positives, because the rate is undefined (Hardt et al., 2016)
+          * ``fpr``        — False Positive Rate (FP / (FP + TN)); ``None`` when
+            the group has no negatives
+          * ``low_support`` — present and ``True`` when the group has fewer than
+            ``min_group_size`` samples; such groups are excluded from the gaps
+
+        Gaps are computed only from defined rates of eligible groups. With fewer
+        than two such values the gap is ``None`` and the violation level is
+        ``"insufficient_data"``.
 
         Summary keys (under ``__summary__``):
           * ``tpr_gap``          — max(tpr) - min(tpr) across groups
@@ -316,31 +339,31 @@ def equalized_odds(
             y_true_g = y_true[mask]
             y_pred_g = y_pred[mask]
 
-            # TPR = TP / (TP + FN) — use recall_score for consistency
-            tpr = float(recall_score(y_true_g, y_pred_g, zero_division=0))
-
-            # FPR = FP / (FP + TN) — computed manually from confusion matrix
             tn, fp, fn, tp = 0, 0, 0, 0
             if len(y_true_g) > 0:
                 cm = confusion_matrix(y_true_g, y_pred_g, labels=[0, 1])
                 tn, fp, fn, tp = cm.ravel()
-            denominator = int(fp) + int(tn)
-            fpr = float(fp / denominator) if denominator > 0 else 0.0
+            # TPR = TP / (TP + FN) and FPR = FP / (FP + TN). A rate whose
+            # denominator is zero is undefined, not zero (TL-06).
+            positives = int(tp) + int(fn)
+            negatives = int(fp) + int(tn)
+            tpr = float(tp / positives) if positives > 0 else None
+            fpr = float(fp / negatives) if negatives > 0 else None
 
-            group_results[str(g)] = {
-                "n_samples": int(mask.sum()),
-                "tpr": float(tpr),
-                "fpr": float(fpr),
-            }
+            entry: dict = {"n_samples": int(mask.sum()), "tpr": tpr, "fpr": fpr}
+            if entry["n_samples"] < min_group_size:
+                entry["low_support"] = True
+            group_results[str(g)] = entry
 
         # Summary block
         if len(group_results) >= 2:
-            tpr_values = [v["tpr"] for v in group_results.values()]
-            fpr_values = [v["fpr"] for v in group_results.values()]
-            tpr_gap = round(max(tpr_values) - min(tpr_values), 4)
-            fpr_gap = round(max(fpr_values) - min(fpr_values), 4)
-            best_tpr_group = max(group_results, key=lambda g: group_results[g]["tpr"])
-            worst_tpr_group = min(group_results, key=lambda g: group_results[g]["tpr"])
+            eligible = {g: v for g, v in group_results.items() if not v.get("low_support")}
+            tprs = {g: v["tpr"] for g, v in eligible.items() if v["tpr"] is not None}
+            fprs = {g: v["fpr"] for g, v in eligible.items() if v["fpr"] is not None}
+            tpr_gap = round(max(tprs.values()) - min(tprs.values()), 4) if len(tprs) >= 2 else None
+            fpr_gap = round(max(fprs.values()) - min(fprs.values()), 4) if len(fprs) >= 2 else None
+            best_tpr_group = max(tprs, key=lambda g: tprs[g]) if tprs else None
+            worst_tpr_group = min(tprs, key=lambda g: tprs[g]) if tprs else None
         else:
             # Single subgroup — gaps are 0, no violation
             tpr_gap = 0.0
@@ -363,7 +386,7 @@ def equalized_odds(
 
 
 def _violation_level(
-    gap: float, severe_threshold: float = 0.15, moderate_threshold: float = 0.05
+    gap: Optional[float], severe_threshold: float = 0.15, moderate_threshold: float = 0.05
 ) -> str:
     """
     Classify a fairness gap into a violation severity level.
@@ -380,8 +403,11 @@ def _violation_level(
     Returns
     -------
     str
-        One of ``"severe"``, ``"moderate"``, or ``"acceptable"``.
+        One of ``"severe"``, ``"moderate"``, ``"acceptable"``, or
+        ``"insufficient_data"`` when the gap is undefined (``None``).
     """
+    if gap is None:
+        return "insufficient_data"
     if gap > severe_threshold:
         return "severe"
     elif gap >= moderate_threshold:

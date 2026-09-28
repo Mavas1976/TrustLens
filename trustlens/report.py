@@ -703,7 +703,7 @@ class TrustReport:
         bias_has_severe_violation = False
         bias_module = self.results.get("bias", {})
         for feat_data in bias_module.get("subgroup_performance", {}).values():
-            if feat_data.get("__summary__", {}).get("performance_gap", 0.0) > 0.15:
+            if (feat_data.get("__summary__", {}).get("performance_gap") or 0.0) > 0.15:
                 bias_has_severe_violation = True
                 break
         if not bias_has_severe_violation:
@@ -837,7 +837,7 @@ class TrustReport:
 
             subgroups = bias_module.get("subgroup_performance", {})
             for feat_name, feat_data in subgroups.items():
-                gap = feat_data.get("__summary__", {}).get("performance_gap", 0.0)
+                gap = feat_data.get("__summary__", {}).get("performance_gap") or 0.0
                 if gap > 0.1:
                     add_insight(
                         f"Warning: Significant performance gap detected across {feat_name}.\n    → Investigate subgroup disparities.",
@@ -873,7 +873,7 @@ class TrustReport:
                 if ratio <= 5.0:
                     max_gap = 0.0
                     for feat_data in subgroups.values():
-                        gap = feat_data.get("__summary__", {}).get("performance_gap", 0.0)
+                        gap = feat_data.get("__summary__", {}).get("performance_gap") or 0.0
                         if gap > max_gap:
                             max_gap = gap
                     if max_gap <= 0.1:

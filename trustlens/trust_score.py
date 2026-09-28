@@ -196,7 +196,7 @@ def _bias_score(bias_data: dict) -> float:
     subgroup = bias_data.get("subgroup_performance", {})
     for feat_data in subgroup.values():
         summary = feat_data.get("__summary__", {})
-        gap = float(summary.get("performance_gap", 0.0))
+        gap = float(summary.get("performance_gap") or 0.0)
         max_gap = max(max_gap, gap)
 
     subgroup_penalty = float(np.clip(max_gap, 0.0, 1.0))

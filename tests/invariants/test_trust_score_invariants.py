@@ -142,7 +142,6 @@ def test_regression_score_is_scale_invariant(scale):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="TL-06")
 def test_perfect_classifier_has_no_fairness_violation():
     """TL-06: a group without positives has an undefined TPR, not a TPR of 0."""
     y, y_pred, y_prob = _perfect_binary(400)
@@ -164,7 +163,6 @@ def test_perfect_classifier_has_no_fairness_violation():
     assert not ts.is_blocked, ts.verdict
 
 
-@pytest.mark.xfail(strict=True, reason="TL-06")
 def test_tiny_group_does_not_trigger_fairness_block():
     """TL-06: a single-sample group carries no statistical evidence of bias."""
     y, y_pred, y_prob = _calibrated_binary(3000, 8.0)
