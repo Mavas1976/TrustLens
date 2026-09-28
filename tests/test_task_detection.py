@@ -14,15 +14,30 @@ rng = np.random.default_rng(0)
     [
         (np.array([0, 1] * 50), "classification"),
         (np.array(["cat", "dog"] * 50), "classification"),
-        (np.arange(25, dtype=float).repeat(4), "classification"),  # float-encoded labels
-        (np.arange(1, 51).repeat(2), "classification"),  # contiguous labels 1..50
-        (rng.integers(0, 60, size=10_000) * 7, "classification"),  # few distinct per sample
-        (np.round(rng.normal(100, 30, size=600)).astype(int), "regression"),  # counts
+        (np.arange(12, dtype=float).repeat(4), "classification"),  # float-encoded labels
+        (np.round(rng.normal(100, 30, size=600)).astype(int), "regression"),  # spread counts
         (rng.normal(size=300), "regression"),  # continuous floats
+        (rng.integers(1, 10, 300) / 2.0, "regression"),  # half-step ratings (GA-06)
     ],
 )
 def test_auto_detection_from_target(y, expected):
     assert _detect_task(y, "auto") == expected
+
+
+@pytest.mark.parametrize(
+    "y",
+    [
+        np.arange(1, 51).repeat(2),  # 50 contiguous labels ... or a count 1..50
+        rng.poisson(20, 5000),  # Poisson counts: contiguous, few distinct per sample
+        rng.integers(0, 60, size=10_000) * 7,  # few distinct values per sample
+    ],
+)
+def test_ambiguous_integer_targets_require_explicit_task(y):
+    """GA-06: labels and counts look alike; ask instead of guessing."""
+    with pytest.raises(ValueError, match="task="):
+        _detect_task(y, "auto")
+    assert _detect_task(y, "classification") == "classification"
+    assert _detect_task(y, "regression") == "regression"
 
 
 def test_fitted_regressor_routes_to_regression():

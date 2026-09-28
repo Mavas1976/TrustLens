@@ -113,6 +113,10 @@ def brier_score(
         raise ValueError(
             f"brier_score expects binary labels (0/1). Got unique values: {unique_labels}."
         )
+    if y_prob.size == 0:
+        raise ValueError("brier_score needs at least one sample.")
+    if not np.all(np.isfinite(y_prob)) or np.any((y_prob < 0.0) | (y_prob > 1.0)):
+        raise ValueError("brier_score expects finite probabilities in [0, 1] (GB-12).")
 
     return float(np.mean((y_prob - y_true) ** 2))
 

@@ -201,8 +201,11 @@ def centered_kernel_alignment(
             f"X and Y must have the same number of samples, got {X.shape[0]} and {Y.shape[0]}."
         )
 
-    # CKA is scale-invariant; normalising first keeps the absolute degeneracy
-    # threshold below from zeroing small-magnitude embeddings (TL-29).
+    # CKA is invariant to translation and scale. Centering the features and
+    # then normalising keeps the absolute degeneracy threshold below from
+    # zeroing small-magnitude or offset embeddings (TL-29, GB-10).
+    X = X - X.mean(axis=0, keepdims=True)
+    Y = Y - Y.mean(axis=0, keepdims=True)
     x_norm = float(np.linalg.norm(X))
     y_norm = float(np.linalg.norm(Y))
     if x_norm == 0.0 or y_norm == 0.0:

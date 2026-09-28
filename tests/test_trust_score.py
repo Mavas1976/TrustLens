@@ -184,10 +184,10 @@ class TestRepresentationScore:
         score = _representation_score(poor_representation)
         assert score <= 40.0
 
-    def test_nan_silhouette_does_not_crash(self):
-        data = {"separability": {"silhouette_score": float("nan")}}
-        score = _representation_score(data)
-        assert score == pytest.approx(50.0, abs=1.0)
+    def test_nan_silhouette_means_not_assessed(self):
+        # GB-05: an undefined silhouette is missing evidence, not a neutral 50.
+        results = {"representation": {"separability": {"silhouette_score": float("nan")}}}
+        assert "representation" not in compute_trust_score(results).sub_scores
 
     def test_range(self, good_representation):
         score = _representation_score(good_representation)

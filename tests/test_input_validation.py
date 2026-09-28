@@ -187,3 +187,93 @@ def test_numeric_sensitive_feature_with_nan_forms_missing_group():
         verbose=False,
     )
     assert "<missing>" in report.results["bias"]["subgroup_performance"]["f"]
+
+
+def test_equalized_odds_runs_for_any_two_labels():
+    """GA-05: binary labels other than 0/1 still get TPR/FPR gaps."""
+    y, y_pred, y_prob = _binary()
+    names = np.array(["neg", "pos"])
+    groups = rng.choice(["a", "b"], N)
+    report = analyze(
+        None,
+        None,
+        names[y],
+        y_pred=names[y_pred],
+        y_prob=y_prob,
+        sensitive_features={"g": groups},
+        verbose=False,
+    )
+    eo = report.results["bias"]["equalized_odds"]
+    assert "g" in eo and eo["g"]["__summary__"]["tpr_gap"] is not None
+
+
+def test_ragged_semantic_prediction_sets_are_encoded():
+    """GA-08: sets written in class labels map onto probability columns."""
+    k = rng.integers(0, 3, N)
+    labels = np.array(["x", "y", "z"])
+    y_prob = rng.dirichlet(np.ones(3), N)
+    sets = [[labels[i]] for i in k]  # each set holds exactly the true label
+    report = analyze(
+        None,
+        None,
+        labels[k],
+        y_pred=labels[y_prob.argmax(axis=1)],
+        y_prob=y_prob,
+        class_labels=labels,
+        y_pred_sets=sets,
+        verbose=False,
+    )
+    assert report.results["calibration"]["conformal"]["marginal_coverage"] == pytest.approx(1.0)
+
+
+def test_modules_accepts_a_single_name():
+    """GA-11: a string is one module, not an iterable of characters."""
+    y, y_pred, y_prob = _binary()
+    report = analyze(
+        None, None, y, y_pred=y_pred, y_prob=y_prob, modules="calibration", verbose=False
+    )
+    assert "calibration" in report.results and "failure" not in report.results
+
+
+def test_tiny_sample_cannot_pass():
+    """GA-11: a handful of samples is not enough evidence for a passing grade."""
+    y = np.array([0, 1] * 5)
+    p = np.where(y == 1, 0.95, 0.05)
+    ts = analyze(
+        None, None, y, y_pred=y, y_prob=np.column_stack([1 - p, p]), verbose=False
+    ).trust_score
+    assert ts.grade == "C"
+    assert any("samples" in c for c in ts.caps_applied)
+
+
+def test_equalized_odds_crash_caps_the_grade(monkeypatch):
+    """GB-06: a failed fairness computation must not make fairness look better."""
+    import trustlens.core.pipeline as pipeline
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated failure")
+
+    monkeypatch.setattr(pipeline, "equalized_odds", boom)
+    y, y_pred, y_prob = _binary()
+    ts = analyze(
+        None,
+        None,
+        y,
+        y_pred=y_pred,
+        y_prob=y_prob,
+        sensitive_features={"g": rng.choice(["a", "b"], N)},
+        verbose=False,
+    ).trust_score
+    assert ts.base_score > 59  # the cap is what brings the grade down
+    assert ts.grade == "C" and ts.score == 59
+    assert any("equalized odds failed" in c for c in ts.caps_applied)
+
+
+def test_quick_analyze_refuses_model_without_data():
+    """GB-17: the caller's model is never swapped for a demo model."""
+    from sklearn.linear_model import LogisticRegression
+
+    from trustlens import quick_analyze
+
+    with pytest.raises(ValueError, match="pass X and y"):
+        quick_analyze(LogisticRegression())

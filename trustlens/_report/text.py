@@ -441,7 +441,7 @@ class TextReportMixin(ReportBase):
             .get("__overall__", {})
             .get("overall_error_rate", 0.0)
         )
-        error_pct = int(error_rate * 100) if error_rate is not None else 0
+        error_pct = round(error_rate * 100) if error_rate is not None else 0
 
         avg_err_conf = failure_module.get("confidence_gap", {}).get(
             "incorrect_confidence_mean", 0.0
@@ -463,7 +463,8 @@ class TextReportMixin(ReportBase):
                 )
 
         if "failure" in self.trust_score.sub_scores and not is_confidently_wrong:
-            if conf_gap < 0.05:
+            # With no errors there is no "incorrect" group to be overconfident on (GA-11).
+            if error_rate > 0 and conf_gap < 0.05:
                 add_insight(
                     "Warning: Model is overconfident on incorrect predictions (low confidence gap).",
                     2,
@@ -472,6 +473,15 @@ class TextReportMixin(ReportBase):
         # Check Bias
         if "bias" in self.results:
             bias_module = self.results["bias"]
+            for feat_name, feat_data in bias_module.get("subgroup_performance", {}).items():
+                excluded = (feat_data.get("__summary__") or {}).get("excluded_groups")
+                if excluded:
+                    # GA-04: say which groups were too small to judge.
+                    add_insight(
+                        f"Info: {feat_name} groups {', '.join(map(str, excluded))} have too few "
+                        "samples for a fairness gap and were excluded.",
+                        2,
+                    )
             ratio = bias_module.get("class_imbalance", {}).get("imbalance_ratio", 1.0)
             if ratio > 5.0:
                 add_insight(

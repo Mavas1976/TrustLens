@@ -29,7 +29,9 @@ def compare_dicts(actual, expected, path=""):
         for i, (a, e) in enumerate(zip(actual, expected)):
             compare_dicts(a, e, path=f"{path}[{i}]")
     elif isinstance(actual, float):
-        assert actual == pytest.approx(expected, abs=1e-5), (
+        # 5e-4 absorbs binning differences across the supported scikit-learn
+        # range (sklearn 1.2 moved an MCE value by 6e-5; GB-19).
+        assert actual == pytest.approx(expected, abs=5e-4), (
             f"Value mismatch at {path}: actual={actual}, expected={expected}"
         )
     else:

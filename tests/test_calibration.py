@@ -388,3 +388,12 @@ def test_calibration_metrics_reject_invalid_input(y_true, y_prob, message):
     for metric in (expected_calibration_error, maximum_calibration_error):
         with pytest.raises(ValueError, match=message):
             metric(np.array(y_true), np.array(y_prob, dtype=float))
+
+
+@pytest.mark.parametrize("y_prob", [[0.2, float("nan")], [0.2, 2.0], [-0.1, 0.5]])
+def test_brier_score_rejects_invalid_probabilities(y_prob):
+    """GB-12."""
+    from trustlens.metrics.calibration import brier_score
+
+    with pytest.raises(ValueError, match="finite probabilities"):
+        brier_score(np.array([0, 1]), np.array(y_prob))

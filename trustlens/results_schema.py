@@ -53,6 +53,7 @@ class FailureResult(TypedDict, total=False):
     n_classes: int
     accuracy: float
     baseline_accuracy: float
+    n_samples: int
     status: str
     reason: str
 

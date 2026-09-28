@@ -55,11 +55,13 @@ class PersistenceMixin(ReportBase):
         path = os.fspath(path)
         p = Path(path).resolve()
         suffix = p.suffix.lower()
-        looks_like_file = suffix[1:].isalpha() and not p.is_dir()
-        if looks_like_file and suffix not in (".json", ".txt"):
+        # Any suffix other than .json/.txt is refused unless the path is an
+        # existing directory, so 'report.png' or 'report.v2' never silently
+        # becomes a bundle directory (GB-18).
+        if suffix and suffix not in (".json", ".txt") and not p.is_dir():
             raise ValueError(
                 f"Unsupported report file type '{p.suffix}'. Use '.json', '.txt', or a "
-                "directory path without a suffix for the full bundle."
+                "directory path without a suffix (or an existing directory) for the full bundle."
             )
         if not overwrite and p.exists() and (p.is_file() or any(p.iterdir())):
             raise FileExistsError(f"{p} already exists; pass overwrite=True to replace it.")

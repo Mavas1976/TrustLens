@@ -32,6 +32,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Quiet runs (TL-26)**: `verbose=False` prints nothing; the unused tqdm bar is removed; `quick_analyze()` prints its demo banner only for demo data.
 - **Metric input checks (TL-28)**: ECE, MCE and the overconfidence error reject empty input, non-finite or out-of-range probabilities and non-binary labels.
 - **Pattern detection (TL-17)**: skipped modules no longer read as a perfect 0.0 in report patterns and insights.
+- **Independent-verification fixes**:
+  - Top-label ECE, overconfidence error and error-detection AUROC judge `argmax(y_prob)`, and the argmax warning also works for integer labels, catching swapped probability columns (GA-03).
+  - NaN/Inf in `y_true`/`y_pred` raise (GA-07); NaN in a numeric sensitive feature forms the `"<missing>"` group (GB-04).
+  - Saved JSON is strict (NaN/Inf become null) and carries `score_version` everywhere (GB-16, GA-09).
+  - Equalized odds runs for any two labels, using `class_labels[1]` as positive (GA-05).
+  - Ragged prediction sets written in class labels are encoded (GA-08).
+  - Excluded low-support groups are logged and named in the report (GA-04).
+  - Ambiguous integer targets (many contiguous values, or few distinct values per sample) raise and ask for `task=`; fractional targets are regression (GA-06).
+  - `modules="calibration"` is accepted as one module; fewer than 30 samples caps at C; the all-correct "overconfident" insight is gone (GA-11).
+  - Missing metrics are "not assessed", never scored from defaults (GB-05).
+  - A failed equalized-odds computation caps at C instead of improving the bias score (GB-06).
+  - CKA is translation-invariant (GB-10).
+  - Brier and weights reject non-finite values (GB-12).
+  - `quick_analyze(model)` without data raises (GB-17).
+  - `save()` refuses any unknown suffix unless the path is an existing directory (GB-18).
+  - Characterization tolerance covers the supported scikit-learn range (GB-19).
+  - The docs build on a clean checkout (GB-02).
+  - The wheel ships only `trustlens` (GB-03).
 - **Metric fixes (TL-16, TL-29, TL-31)**: `crps_decomposition` includes Hersbach's outlier segments (an observation far outside the intervals no longer contributes almost nothing); `embedding_separability` excludes self-pairs from the within-class distance; `centered_kernel_alignment` is scale-invariant again; `brier_score` docstring example corrected (0.048); CRPS grid-bias direction corrected in the docs; methodology weights are rounded instead of truncated.
 
 ### Documentation

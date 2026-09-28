@@ -146,7 +146,8 @@
         "confidence_auroc": 0.807967,
         "n_classes": 2,
         "accuracy": 0.89,
-        "baseline_accuracy": 0.5
+        "baseline_accuracy": 0.5,
+        "n_samples": 100
       },
       "bias": {
         "class_imbalance": {
@@ -431,7 +432,8 @@
         "confidence_auroc": 0.811653,
         "n_classes": 2,
         "accuracy": 0.82,
-        "baseline_accuracy": 0.5
+        "baseline_accuracy": 0.5,
+        "n_samples": 100
       },
       "bias": {
         "class_imbalance": {

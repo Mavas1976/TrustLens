@@ -119,6 +119,8 @@ _NO_SKILL_AUROC = 0.6
 # Below this many samples the overconfidence error is too noisy to block on
 # (P(OCE > 0.10) ≈ 0.2 at n = 30 for a perfectly calibrated model).
 _MIN_SAMPLES_OVERCONFIDENCE = 100
+# Fewer samples than this cannot earn a passing grade (GA-11).
+_MIN_SAMPLES_FOR_GRADE = 30
 
 # Failure: error rate at which undetectable errors weigh fully (methodology 2.1).
 _FAILURE_ERROR_RATE_AT_FULL_WEIGHT = 0.20
@@ -153,9 +155,18 @@ def _is_assessed(dimension: str, data: object) -> bool:
     if dimension == "calibration":
         return data.get("ece") is not None
     if dimension == "failure":
-        return bool(data.get("confidence_gap", {}).get("status") != "skipped")
+        # Needs an error rate; an empty or placeholder failure block is not
+        # evidence (GB-05).
+        overall = data.get("misclassification_summary", {}).get("__overall__", {})
+        return (
+            overall.get("overall_error_rate") is not None
+            and data.get("confidence_gap", {}).get("status") != "skipped"
+        )
     if dimension == "bias":
         return bool(_fairness_gaps(data))
+    if dimension == "representation":
+        silhouette = data.get("separability", {}).get("silhouette_score")
+        return silhouette is not None and bool(np.isfinite(float(silhouette)))
     return True
 
 
@@ -188,7 +199,7 @@ def _failure_score(fail_data: dict) -> float:
     normalised by its attainable maximum ``1 − 1/K`` as DetectionScore.
     """
     misc = fail_data.get("misclassification_summary", {})
-    error_rate = float(misc.get("__overall__", {}).get("overall_error_rate", 0.5))
+    error_rate = float(misc["__overall__"]["overall_error_rate"])
 
     auroc = fail_data.get("confidence_auroc")
     if error_rate <= 0.0:
@@ -245,10 +256,7 @@ def _representation_score(rep_data: dict) -> float:
 
     RepScore = 100 × clip(0.5 + 0.5 × silhouette, 0, 1)
     """
-    sep = rep_data.get("separability", {})
-    sil = float(sep.get("silhouette_score", 0.0))
-    if np.isnan(sil):
-        sil = 0.0
+    sil = float(rep_data["separability"]["silhouette_score"])
     return 100.0 * float(np.clip(0.5 + 0.5 * sil, 0.0, 1.0))
 
 
@@ -475,9 +483,11 @@ def _validated_weights(weights: dict[str, float] | None, defaults: dict[str, flo
         unknown = sorted(set(weights) - set(defaults))
         if unknown:
             raise ValueError(f"Unknown weight key(s) {unknown}. Valid keys: {sorted(defaults)}.")
-        negative = sorted(k for k, v in weights.items() if v < 0)
-        if negative:
-            raise ValueError(f"Weights must be non-negative; got negative values for {negative}.")
+        invalid = sorted(k for k, v in weights.items() if not np.isfinite(v) or v < 0)
+        if invalid:
+            raise ValueError(
+                f"Weights must be finite and non-negative; got invalid values for {invalid}."
+            )
         w.update(weights)
     if sum(w.values()) <= 0:
         raise ValueError("At least one weight must be positive.")
@@ -649,6 +659,16 @@ def compute_trust_score(
                 )
 
     # 4. Caps: an incomplete assessment or a very weak dimension cannot pass
+    eo = (results.get("bias") or {}).get("equalized_odds")
+    if isinstance(eo, dict) and eo.get("reason") == "computation_error":
+        # A crash must not make fairness look better than it is (GB-06).
+        caps.append("Fairness assessment incomplete: equalized odds failed (capped at grade C)")
+    n_samples = failure.get("n_samples", calibration.get("n_samples"))
+    if n_samples is not None and int(n_samples) < _MIN_SAMPLES_FOR_GRADE:
+        caps.append(
+            f"Only {int(n_samples)} samples; at least {_MIN_SAMPLES_FOR_GRADE} are needed for a "
+            "passing grade (capped at grade C)"
+        )
     if is_partial:
         caps.insert(
             0,

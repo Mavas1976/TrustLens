@@ -87,7 +87,12 @@ class TestSaveRobustness:
 
     def test_accepts_pathlib_and_dotted_directories(self, report, tmp_path):
         assert report.save(tmp_path / "r.json").is_file()
-        assert report.save(tmp_path / "run_2026.09").is_dir()
+        existing = tmp_path / "run_2026.09"
+        existing.mkdir()
+        assert report.save(existing).is_dir()
+        # GB-18: an unknown suffix on a path that does not exist is refused.
+        with pytest.raises(ValueError, match="Unsupported report file type"):
+            report.save(tmp_path / "report.v2")
 
     def test_rejects_unsupported_file_type(self, report, tmp_path):
         with pytest.raises(ValueError, match="Unsupported report file type"):

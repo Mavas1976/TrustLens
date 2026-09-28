@@ -86,12 +86,12 @@ def _detect_task(
     1. the model: a fitted scikit-learn-style regressor or classifier
        (``_estimator_type``) decides;
     2. probabilities: ``y_prob`` implies classification;
-    3. the target: non-integer floats with more than 20 distinct values are
-       regression. Integer-valued targets are class labels when they have at
-       most 20 distinct values or form a contiguous range starting at 0 or 1.
-       Other integer targets whose distinct values make up at least 5% of the
-       samples (counts, prices) are regression (TL-07); a warning asks for an
-       explicit ``task`` because this case is a heuristic.
+    3. the target: fractional floats are regression; integer-valued targets
+       with at most 20 distinct values are class labels; integer targets whose
+       distinct values are spread out (not a contiguous 0..K / 1..K range) and
+       make up at least 5% of the samples are regression, with a warning.
+       Anything else is ambiguous and raises ``ValueError`` asking for an
+       explicit ``task`` (TL-07, GA-06).
     """
     if task in ("classification", "regression"):
         return task
@@ -115,21 +115,27 @@ def _detect_task(
         bool(np.all(np.isfinite(y))) and bool(np.allclose(y, np.round(y)))
     )
     if not is_integer_valued:
-        return "classification" if n_unique <= 20 else "regression"
+        # Fractional values (e.g. half-step ratings) are never class indices (GA-06).
+        return "regression"
 
     if n_unique <= 20:
         return "classification"
     first = float(values[0])
     contiguous = first in (0.0, 1.0) and float(values[-1]) - first == n_unique - 1
-    if contiguous or n_unique / max(len(y), 1) < 0.05:
-        return "classification"
-
-    logger.warning(
-        "task='auto' routed an integer-valued target with %d distinct values to regression. "
-        "Pass task='classification' if these are class labels.",
-        n_unique,
+    if not contiguous and n_unique / max(len(y), 1) >= 0.05:
+        logger.warning(
+            "task='auto' routed an integer-valued target with %d distinct values to "
+            "regression. Pass task='classification' if these are class labels.",
+            n_unique,
+        )
+        return "regression"
+    # Many contiguous integers (0..K or 1..K) or few distinct values per sample:
+    # class labels and counts look the same, so ask instead of guessing (GA-06).
+    raise ValueError(
+        f"Cannot tell whether an integer target with {n_unique} distinct values is class "
+        "labels or a count. Pass task='classification' or task='regression', or supply "
+        "y_prob or a fitted model."
     )
-    return "regression"
 
 
 def quick_analyze(
@@ -157,6 +163,9 @@ def quick_analyze(
     TrustReport
         Populated report object with metrics, plots, and narrative summaries.
     """
+    if model is not None and (X is None or y is None):
+        # Never silently swap the caller's model for a demo model (GB-17).
+        raise ValueError("quick_analyze(model, X, y): pass X and y together with the model.")
     using_demo = model is None or X is None or y is None
     if using_demo:
         logger.info("No model/data provided. Auto-loading %s dataset for demo...", dataset)
@@ -200,7 +209,7 @@ def quick_analyze(
 
 def analyze(
     model: Any,
-    X: np.ndarray,
+    X: Any,
     y_true: np.ndarray,
     y_pred: Optional[np.ndarray] = None,
     y_prob: Optional[np.ndarray] = None,
@@ -227,8 +236,10 @@ def analyze(
     ----------
     model : Any, optional
       Trained machine learning model. Can be None if ``y_pred`` or ``y_prob`` are provided manually.
-    X : np.ndarray
-      Validation feature matrix, shape (n_samples, n_features).
+    X : array-like or None
+      Validation feature matrix, shape (n_samples, n_features); passed to the
+      model unchanged (a DataFrame keeps its column names). May be None when
+      ``y_pred``/``y_prob`` are supplied.
     y_true : np.ndarray
       Ground-truth labels, shape (n_samples,).
     y_pred : np.ndarray, optional

@@ -157,3 +157,11 @@ def test_cka_is_scale_invariant():
     X = np.random.default_rng(0).normal(size=(50, 4))
     assert centered_kernel_alignment(X * 1e-4, X * 1e-4) == pytest.approx(1.0)
     assert centered_kernel_alignment(X * 1e4, X) == pytest.approx(1.0)
+
+
+def test_cka_is_translation_invariant():
+    """GB-10: a constant offset must not zero the alignment."""
+    from trustlens.metrics.representation import centered_kernel_alignment
+
+    X = np.random.default_rng(1).normal(size=(50, 4))
+    assert centered_kernel_alignment(X + 1e6, X) == pytest.approx(1.0, abs=1e-6)

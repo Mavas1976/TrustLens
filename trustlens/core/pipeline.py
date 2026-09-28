@@ -102,12 +102,69 @@ def _warn_if_pred_differs_from_argmax(y_pred: np.ndarray, top_label: np.ndarray)
         )
 
 
+def _binary_codes(
+    y_true: np.ndarray, y_pred: np.ndarray, class_labels: Optional[np.ndarray]
+) -> Optional[tuple[np.ndarray, np.ndarray]]:
+    """Map a two-label problem to 0/1 for equalized odds; None if not binary."""
+    labels = np.unique(np.concatenate([np.asarray(y_true), np.asarray(y_pred)]))
+    if len(labels) != 2:
+        return None
+    if class_labels is not None and len(class_labels) == 2:
+        positive = np.asarray(class_labels)[1]
+    else:
+        positive = labels[1]
+    return (
+        (np.asarray(y_true) == positive).astype(int),
+        (np.asarray(y_pred) == positive).astype(int),
+    )
+
+
+def _encode_prediction_sets(y_pred_sets: Any, class_labels: Optional[np.ndarray]) -> Any:
+    """Translate ragged sets of semantic labels to probability-column indices (GA-08).
+
+    Membership matrices are already column-indexed. Label lists are mapped only
+    when every element is one of ``class_labels``; otherwise they are assumed to
+    hold column indices already.
+    """
+    if class_labels is None or (isinstance(y_pred_sets, np.ndarray) and y_pred_sets.ndim == 2):
+        return y_pred_sets
+    index = {_as_python_label(label): i for i, label in enumerate(np.asarray(class_labels))}
+    try:
+        members = [_as_python_label(v) for row in y_pred_sets for v in row]
+    except TypeError:
+        return y_pred_sets
+    if (
+        members
+        and all(m in index for m in members)
+        and not all(isinstance(m, (int, np.integer)) and index.get(m) == m for m in members)
+    ):
+        return [[index[_as_python_label(v)] for v in row] for row in y_pred_sets]
+    return y_pred_sets
+
+
+def _warn_on_low_support(subgroups: dict[str, Any]) -> None:
+    """Make excluded low-support groups visible instead of silently dropping them (GA-04)."""
+    for feature, data in subgroups.items():
+        excluded = (
+            data.get("__summary__", {}).get("excluded_groups") if isinstance(data, dict) else None
+        )
+        if excluded:
+            logger.warning(
+                "sensitive_features['%s']: group(s) %s have fewer than %d samples and are "
+                "excluded from fairness gaps.",
+                feature,
+                excluded,
+                _MIN_FAIRNESS_GROUP_SIZE,
+            )
+
+
 def _accuracy_and_baseline(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
     """Accuracy and the majority-class baseline it must beat to show skill."""
     _, counts = np.unique(y_true, return_counts=True)
     return {
         "accuracy": round(float(np.mean(y_true == y_pred)), 6),
         "baseline_accuracy": round(float(counts.max() / counts.sum()), 6),
+        "n_samples": int(len(y_true)),
     }
 
 
@@ -195,6 +252,8 @@ def _run_analysis_pipeline(
     # 1. Determine which modules to run
     # ------------------------------------------------------------------
     _ALL_MODULES = ["calibration", "failure", "bias", "representation"]
+    if isinstance(modules, str):
+        modules = [modules]  # a single name, not an iterable of characters (GA-11)
     unknown_modules = [m for m in (modules or []) if m not in _ALL_MODULES]
     if unknown_modules:
         raise ValueError(
@@ -301,7 +360,7 @@ def _run_analysis_pipeline(
                 )
                 calibration_block["conformal"] = conformal_diagnostics(
                     conformal_y,
-                    y_pred_sets,
+                    _encode_prediction_sets(y_pred_sets, class_labels),
                     nominal_coverage=nominal_coverage,
                     n_classes=n_set_classes,
                 )
@@ -347,7 +406,7 @@ def _run_analysis_pipeline(
                         "overall_error_rate": round(float(incorrect_mask.mean()), 4),
                     }
                 },
-                "confidence_gap": {"gap": 0.0, "status": "skipped"},
+                "confidence_gap": {"gap": None, "status": "skipped"},
                 **_accuracy_and_baseline(y_true, y_pred),
             }
             missing_components.append("failure_confidence_metrics")
@@ -364,16 +423,22 @@ def _run_analysis_pipeline(
             results["bias"]["subgroup_performance"] = subgroup_performance(
                 y_true, y_pred, sensitive_features, min_group_size=_MIN_FAIRNESS_GROUP_SIZE
             )
-            # Equalized odds requires a binary target (0, 1) and features with >1 subgroup
-            is_binary = set(np.unique(y_true)).issubset({0, 1})
+            _warn_on_low_support(results["bias"]["subgroup_performance"])
+            # Equalized odds needs a binary target and features with >1 subgroup.
+            # Any two labels qualify: the positive class is class_labels[1] (the
+            # probability column order) or else the larger label (GA-05).
+            binary_codes = _binary_codes(y_true, y_pred, class_labels)
             meaningful_features = {
                 k: v for k, v in sensitive_features.items() if len(np.unique(v)) > 1
             }
 
-            if is_binary and meaningful_features:
+            if binary_codes is not None and meaningful_features:
                 try:
                     results["bias"]["equalized_odds"] = equalized_odds(
-                        y_true, y_pred, meaningful_features, min_group_size=_MIN_FAIRNESS_GROUP_SIZE
+                        binary_codes[0],
+                        binary_codes[1],
+                        meaningful_features,
+                        min_group_size=_MIN_FAIRNESS_GROUP_SIZE,
                     )
                 except Exception as e:
                     logger.warning("Skipped equalized_odds computation: %s", e)
