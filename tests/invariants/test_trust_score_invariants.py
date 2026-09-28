@@ -207,7 +207,6 @@ def test_small_label_set_stays_classification():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="TL-08")
 def test_html_repr_escapes_feature_names():
     """TL-08: feature names come from data and must be escaped in HTML."""
     payload = "<script>alert(1)</script>"

@@ -297,7 +297,9 @@ class TrustScoreResult:
         return f"TrustScoreResult(score={self.score}, grade={self.grade!r})"
 
     def _repr_html_(self) -> str:
-        """Rich HTML representation for Jupyter notebooks."""
+        """Rich HTML representation for Jupyter notebooks (text is HTML-escaped)."""
+        from html import escape
+
         from trustlens.visualization.summary_plot import _color_for_grade, _color_for_score
 
         gc = _color_for_grade(self.grade)
@@ -313,7 +315,7 @@ class TrustScoreResult:
                 </div>
                 <div style="padding: 4px 12px; border-radius: 20px; background-color: {gc}; color: white;
                             font-size: 13px; font-weight: 700;">
-                    GRADE {self.grade}
+                    GRADE {escape(self.grade)}
                 </div>
             </div>
 
@@ -323,7 +325,7 @@ class TrustScoreResult:
             </div>
 
             <div style="font-size: 16px; font-weight: 600; color: {BRAND_COLORS["dark"]}; margin-bottom: 20px;">
-                {self.verdict}
+                {escape(self.verdict)}
             </div>
 
             <div style="border-top: 1px solid #f0f0f0; pt: 15px;">
@@ -337,7 +339,7 @@ class TrustScoreResult:
             html += f"""
                 <div style="margin-bottom: 10px;">
                     <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px;">
-                        <span style="color: {BRAND_COLORS["dark"]}; font-weight: 500;">{dim.capitalize()}</span>
+                        <span style="color: {BRAND_COLORS["dark"]}; font-weight: 500;">{escape(dim.capitalize())}</span>
                         <span style="color: {sc}; font-weight: 700;">{score:.1f}</span>
                     </div>
                     <div style="width: 100%; height: 6px; background-color: #f0f0f0; border-radius: 3px; overflow: hidden;">

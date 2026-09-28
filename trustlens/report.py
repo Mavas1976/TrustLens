@@ -1905,9 +1905,17 @@ class TrustReport:
         )
 
     def _repr_html_(self) -> str:
-        """Rich HTML representation for Jupyter notebooks."""
+        """Rich HTML representation for Jupyter notebooks.
+
+        Every value derived from user data (feature names, model class,
+        narrative text) is HTML-escaped (TL-08).
+        """
         if self.task_type == "regression":
             return self._repr_html_regression()
+        from html import escape
+
+        def _esc(value: Any) -> str:
+            return escape(str(value))
 
         import base64
         import io
@@ -1937,18 +1945,18 @@ class TrustReport:
                 <div>
                     <h2 style="margin: 0; color: {BRAND_COLORS["dark"]}; font-size: 24px; font-weight: 800;">TrustLens Analysis Report</h2>
                     <div style="font-size: 14px; color: {BRAND_COLORS["gray"]}; margin-top: 4px;">
-                        {self.metadata["model_class"]} &bull; {self.metadata["n_samples"]:,} samples &bull; {self.metadata["timestamp"][:19].replace("T", " ")}
+                        {_esc(self.metadata["model_class"])} &bull; {self.metadata["n_samples"]:,} samples &bull; {self.metadata["timestamp"][:19].replace("T", " ")}
                     </div>
                 </div>
                 <div style="text-align: right;">
                     <div style="font-size: 42px; font-weight: 800; color: {gc}; line-height: 1;">{ts.score}<span style="font-size: 18px; color: {BRAND_COLORS["gray"]}; font-weight: 600;">/100</span></div>
-                    <div style="font-size: 14px; font-weight: 700; color: {gc}; text-transform: uppercase;">Grade {ts.grade}</div>
+                    <div style="font-size: 14px; font-weight: 700; color: {gc}; text-transform: uppercase;">Grade {_esc(ts.grade)}</div>
                 </div>
             </div>
 
             <div style="background-color: #f8f9fa; border-radius: 12px; padding: 15px; margin-bottom: 25px; border-left: 5px solid {gc};">
                 <div style="font-size: 15px; font-weight: 600; color: {BRAND_COLORS["dark"]}; margin-bottom: 5px;">Overall Assessment</div>
-                <div style="font-size: 14px; color: #444;">{ts.verdict}</div>
+                <div style="font-size: 14px; color: #444;">{_esc(ts.verdict)}</div>
             </div>
         """
 
@@ -1958,22 +1966,22 @@ class TrustReport:
 
         reasons_html = "".join(
             [
-                f'<li style="margin-bottom: 4px;">{fail_icon if r["status"] == "fail" else pass_icon} {r["message"]}</li>'
+                f'<li style="margin-bottom: 4px;">{fail_icon if r["status"] == "fail" else pass_icon} {_esc(r["message"])}</li>'
                 for r in exp["reasons"]
             ]
         )
         pr_html = (
-            f'<div style="font-size: 13px; font-weight: 700; color: {BRAND_COLORS["gray"]}; margin-top: 15px; margin-bottom: 4px; text-transform: uppercase;">Primary Risk</div><div style="font-size: 14px; color: #d32f2f; font-weight: 600;">{exp["primary_risk"]["metric"]}</div>'
+            f'<div style="font-size: 13px; font-weight: 700; color: {BRAND_COLORS["gray"]}; margin-top: 15px; margin-bottom: 4px; text-transform: uppercase;">Primary Risk</div><div style="font-size: 14px; color: #d32f2f; font-weight: 600;">{_esc(exp["primary_risk"]["metric"])}</div>'
             if exp["primary_risk"]
             else ""
         )
         recs_html = "".join(
-            [f'<li style="margin-bottom: 4px;">{r}</li>' for r in exp["recommendations"]]
+            [f'<li style="margin-bottom: 4px;">{_esc(r)}</li>' for r in exp["recommendations"]]
         )
 
         html += f"""
             <div style="background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 12px; padding: 15px; margin-bottom: 25px;">
-                <div style="font-size: 15px; font-weight: 600; color: {BRAND_COLORS["dark"]}; margin-bottom: 8px;">Deployment Verdict: <span style="font-weight: 700;">{exp["verdict"]}</span></div>
+                <div style="font-size: 15px; font-weight: 600; color: {BRAND_COLORS["dark"]}; margin-bottom: 8px;">Deployment Verdict: <span style="font-weight: 700;">{_esc(exp["verdict"])}</span></div>
                 {pr_html}
                 <div style="display: flex; gap: 30px; margin-top: 15px; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 200px;">
@@ -2006,7 +2014,7 @@ class TrustReport:
             html += "<li>No critical issues found.</li>"
         else:
             for insight in insights:
-                html += f"<li>{insight}</li>"
+                html += f"<li>{_esc(insight)}</li>"
 
         html += f"""
                     </ul>
