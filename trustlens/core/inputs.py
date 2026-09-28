@@ -54,7 +54,14 @@ def _as_1d(values: Any, name: str) -> np.ndarray:
 
 
 def _require_finite(arr: np.ndarray, name: str) -> None:
-    """Targets and predictions must not contain NaN/Inf (GA-07)."""
+    """Targets and predictions must not contain NaN/Inf or missing labels (GA-07, NF3-07)."""
+    if arr.dtype.kind == "O":
+        missing = int(sum(_is_missing(v) for v in arr))
+        if missing:
+            raise ValueError(
+                f"{name} contains {missing} missing value(s) (None, NaN or NA); remove or "
+                "impute them first."
+            )
     if arr.dtype.kind == "f" and not np.all(np.isfinite(arr)):
         bad = int(np.sum(~np.isfinite(arr)))
         raise ValueError(

@@ -234,10 +234,11 @@ def test_zero_weight_on_every_assessed_dimension_is_rejected():
         compute_trust_score(_results(0.02, 0.9, 0.1), weights={"calibration": 0.0, "failure": 0.0})
 
 
-def documented_no_skill_ceiling(accuracy, baseline, auroc):
+def documented_no_skill_ceiling(accuracy, baseline, auroc, n=None):
     skill = (accuracy - baseline) / (1 - baseline)
     floor = 39.0 if auroc is None else 39 + 20 * min(max((auroc - 0.6) / 0.1, 0), 1)
-    return documented_ceiling(0.10 - skill, 0.0, 0.10, floor)
+    ramp_end = 0.10 if n is None else min(1.0, max(0.10, 10 / (n * (1 - baseline))))
+    return documented_ceiling(ramp_end - skill, 0.0, ramp_end, floor)
 
 
 @pytest.mark.parametrize(
@@ -283,3 +284,25 @@ def test_weak_dimension_ramp_is_linear_between_30_and_40():
         for e in np.linspace(0.14, 0.18, 201)
     ]
     assert np.abs(np.diff(scores)).max() <= 2
+
+
+@pytest.mark.parametrize(("auroc", "expected"), [(0.55, 39), (0.62, 43), (0.65, 49), (0.75, 59)])
+def test_no_skill_end_point_follows_the_published_auroc_constants(auroc, expected):
+    """NF3-04: end point 39 at AUROC <= 0.6, rising linearly to 59 at 0.7."""
+    ts = compute_trust_score(_results(0.02, auroc, 0.05, accuracy=0.95, baseline=0.95))
+    assert ts.base_score > 59
+    assert ts.score == expected
+    assert ts.is_blocked == (auroc < 0.6)
+
+
+@pytest.mark.parametrize(("n", "correct"), [(2000, 1), (2000, 3), (200, 1), (60, 2)])
+def test_no_skill_ramp_spans_at_least_ten_minority_samples(n, correct):
+    """NF3-01: with few minority samples one correct prediction is a small step."""
+    baseline = 0.99 if n == 2000 else 0.9
+    accuracy = baseline + correct / n
+    results = _results(0.02, 0.5, 1 - accuracy, accuracy=accuracy, baseline=baseline)
+    results["failure"]["n_samples"] = n
+    ts = compute_trust_score(results)
+    limit = documented_no_skill_ceiling(accuracy, baseline, 0.5, n=n)
+    assert ts.score == min(ts.base_score, int(np.floor(limit)))
+    assert ts.score <= 39 + 61 * correct / min(10, n * (1 - baseline)) + 1

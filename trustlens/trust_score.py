@@ -7,7 +7,7 @@ trustworthiness.
 Responsibilities
 ----------------
 * Aggregate metrics from various modules (calibration, failure, bias, representation).
-* Apply weightings and penalties to calculate a final 0-100 score.
+* Weight the assessed dimensions and apply blockers, caps and ceilings.
 * Determine the model's deployment verdict and letter grade.
 
 Relationship to other components
@@ -30,7 +30,7 @@ a certification or a regulatory assessment (ADR-001).
  * **0–39 (D)**   — Low. Serious issues; do not deploy.
  * **N/A**        — No dimension could be scored (insufficient evidence).
 
-Formula (methodology 2.1)
+Formula (methodology 2.2)
 -------------------------
 1. Score every dimension that was assessed (0–100):
 
@@ -49,15 +49,22 @@ Formula (methodology 2.1)
    failure 0.30, bias 0.25, representation 0.10, renormalised over the
    dimensions present. This is ``base_score``.
 
-3. Blockers (grade D, score capped at 39): accuracy not above the
-   majority-class baseline; overconfidence error > 0.10; a fairness gap > 0.15.
-   Ceiling ramps lead up to the last two, so the score is continuous: the
-   maximum score falls linearly from 100 (overconfidence 0.05, gap 0.10) to
-   39 at the blocker threshold.
+3. Blockers (grade D, score capped at 39): no predictive skill (accuracy not
+   above the majority-class baseline while the error-detection AUROC is below
+   0.6 or unavailable); overconfidence error > 0.10 on at least 100 samples; a
+   fairness gap > 0.15. Ceiling ramps lead up to each blocker, so the score is
+   continuous in the signal: the maximum score falls linearly from 100 to the
+   blocker's 39 as overconfidence goes 0.05 → 0.10, the gap 0.10 → 0.15, and
+   the normalised skill (accuracy − baseline) / (1 − baseline) 0.10 → 0. The
+   skill ramp spans at least 10 correctly predicted non-majority samples, and
+   its end point rises from 39 to 59 as the AUROC goes 0.6 → 0.7.
 
-4. Caps (grade C, score capped at 59): calibration or failure not assessed
-   (``is_partial``). A sub-score below 40 lowers the ceiling from 100 to 59
-   (reached at 30).
+4. Caps (grade C, score capped at 59): an incomplete assessment
+   (``is_partial``: calibration or failure not assessed, or fairness requested
+   but not assessable) and fewer than 30 samples. A sub-score below 40 lowers
+   the ceiling from 100 to 59 (reached at 30). Sample-count rules (30 samples,
+   100 samples for the overconfidence blocker, 30 per fairness group) are
+   deliberate steps, not ramps.
 
 Every signal is counted once. There are no additive penalties
 (``penalties_applied`` is always empty since 2.0). The grade always matches the
@@ -121,6 +128,9 @@ _NO_SKILL_AUROC = 0.6
 # extra correct prediction cannot jump a model from D to A.
 _NO_SKILL_RAMP_END = 0.10
 _NO_SKILL_AUROC_FULL = 0.70
+# With few minority samples 0.10 of skill is a single prediction, so the ramp
+# spans at least this many correctly predicted non-majority samples (NF3-01).
+_NO_SKILL_RAMP_MIN_SAMPLES = 10
 # Below this many samples the overconfidence error is too noisy to block on
 # (P(OCE > 0.10) ≈ 0.2 at n = 30 for a perfectly calibrated model).
 _MIN_SAMPLES_OVERCONFIDENCE = 100
@@ -539,8 +549,17 @@ def compute_trust_score(
         dim: fn(results[dim]) for dim, fn in scorers.items() if _is_assessed(dim, results.get(dim))
     }
     missing_dimensions = [d for d in _CORE_DIMENSIONS if d not in sub_scores]
-    if _equalized_odds_failed(results.get("bias")):
+    bias_raw = results.get("bias")
+    if _equalized_odds_failed(bias_raw):
         missing_dimensions.append("bias (equalized odds failed)")
+    elif (
+        isinstance(bias_raw, dict)
+        and bias_raw.get("subgroup_performance")
+        and "bias" not in sub_scores
+    ):
+        # Sensitive features were supplied but no two groups were large enough
+        # to compare: fairness was requested and not assessed (NF3-06).
+        missing_dimensions.append("bias (no two groups large enough to compare)")
     is_partial = bool(missing_dimensions)
 
     # 2. Weighted mean over the assessed dimensions
@@ -587,7 +606,13 @@ def compute_trust_score(
                     )
                 )
             floor = _BLOCKED_SCORE_CAP + (_CAPPED_SCORE_CAP - _BLOCKED_SCORE_CAP) * detection
-            limit = _ramp_ceiling(_NO_SKILL_RAMP_END - skill, 0.0, _NO_SKILL_RAMP_END, floor)
+            ramp_end = _NO_SKILL_RAMP_END
+            n_eval = failure.get("n_samples", calibration.get("n_samples"))
+            if n_eval:
+                n_minority = int(n_eval) * (1.0 - baseline)
+                if n_minority > 0:
+                    ramp_end = min(1.0, max(ramp_end, _NO_SKILL_RAMP_MIN_SAMPLES / n_minority))
+            limit = _ramp_ceiling(ramp_end - skill, 0.0, ramp_end, floor)
             if limit is not None:
                 if skill <= 0:
                     reason = (
@@ -732,7 +757,9 @@ def compute_trust_score(
 #
 # Blockers (→ grade D, score ≤ 39): negative skill (S < 0); severe interval
 #                        miscoverage (calibration_error < −0.10 — materially
-#                        over-confident).
+#                        over-confident). Ceilings lead up to both (methodology
+#                        2.2): S 0.10 → 0 and shortfall 0.05 → 0.10 lower the
+#                        maximum score from 100 to 39.
 # Inside a sub-score only: a heavy tail docks the Accuracy/Skill dimension. Weak
 #                        uncertainty correlation lowers Informativeness and is not
 #                        penalised a second time (methodology 2.0, TL-09).
@@ -866,7 +893,11 @@ def _informativeness_from_sharpness(coverage: dict) -> float:
     error-variance correlation when multi-level intervals are available.
     """
     skill = float(coverage.get("sharpness_skill") or 0.0)
-    return 100.0 * float(np.clip(skill, 0.0, 1.0))
+    # Scaled by the best level's calibration weight, so the sub-score falls
+    # continuously to the "unusable uncertainty" 0 as the last usable level
+    # leaves the calibration band (NF3-02). Older results lack the weight.
+    weight = float(coverage.get("sharpness_weight", 1.0))
+    return 100.0 * float(np.clip(skill, 0.0, 1.0)) * float(np.clip(weight, 0.0, 1.0))
 
 
 def _reg_metric_present(metric: dict | None) -> bool:

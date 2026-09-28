@@ -516,3 +516,15 @@ class TestMultilevelIntervalCalibrationRFC155:
     def test_informativeness_status_none_for_classification(self):
         cls = compute_trust_score({"calibration": {"brier_score": 0.0, "ece": 0.0}})
         assert cls.informativeness_status is None
+
+
+def test_informativeness_scales_with_the_sharpness_weight():
+    """NF3-02: as the last usable level leaves the calibration band, the
+    informativeness sub-score falls continuously to the unusable-uncertainty 0."""
+    subs = []
+    for weight in (1.0, 0.5, 0.1):
+        cov = {**_cov_ml(0.07, sharpness_skill=0.6), "n_calibrated_levels": 0}
+        cov["sharpness_weight"] = weight
+        ts = regression_trust_score(_results(_ed(0.9), cov), Y)
+        subs.append(ts.sub_scores["uncertainty_informativeness"])
+    assert subs == pytest.approx([60.0, 30.0, 6.0])

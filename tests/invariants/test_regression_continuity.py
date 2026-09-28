@@ -65,3 +65,38 @@ def test_score_is_continuous_as_coverage_crosses_the_miscoverage_blocker():
     assert min(scores) <= 39 < 60 < max(scores)
     # Ceiling slope 61 / 0.05 plus the interval-calibration sub-score's slope.
     _assert_lipschitz(errors, scores, slope=61 / 0.05 + 500)
+
+
+def test_informativeness_has_no_cliff_at_the_calibration_gate():
+    """NF3-02: a level drifting across the calibration tolerance moves the score gradually."""
+    from scipy.stats import norm
+
+    y_pred = Y_TRUE + 0.5 * NOISE
+    levels = (0.5, 0.8, 0.9)
+    errors, scores = [], []
+    for s in np.linspace(0.5, 1.2, 281):
+        intervals = {
+            lvl: (
+                y_pred - s * 0.5 * norm.ppf(0.5 + lvl / 2),
+                y_pred + s * 0.5 * norm.ppf(0.5 + lvl / 2),
+            )
+            for lvl in levels
+        }
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            report = analyze(
+                None,
+                None,
+                Y_TRUE,
+                y_pred=y_pred,
+                task="regression",
+                prediction_intervals=intervals,
+                verbose=False,
+            )
+        cov = report.results["regression"]["interval_coverage"]
+        errors.append(max(abs(p["calibration_error"]) for p in cov["per_level"]))
+        scores.append(report.trust_score.score)
+    # Largest slope any ramp can have: blocker ceiling (61 / 0.05) plus the
+    # informativeness weight (100 / 0.05) plus interval calibration (500).
+    _assert_lipschitz(errors, scores, slope=61 / 0.05 + 100 / 0.05 + 500)
+    assert max(np.abs(np.diff(scores))) <= 6

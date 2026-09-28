@@ -113,6 +113,10 @@ the ramped thresholds of 2.1 are unchanged; no reference model changes score.
 | Regression blockers | Ceilings from 100 to 39 as the skill (R²) falls from 0.10 to 0 and as the coverage shortfall grows from 0.05 to 0.10. In 2.1 coverage −0.0998 gave 68/B and −0.1016 gave 39/D. | NF-03 |
 | Failed equalized odds | Fairness is not assessed (no score from the subgroup gap alone) and the report is partial, listing `bias (equalized odds failed)`. The score can still exceed that of a successful run with a large gap, but a partial report is capped at C and is never recommended by `compare()`. | NF-06 |
 | `compare()` | No recommendation when eligible reports were scored on different dimensions (for example one with fairness, one without). | R-011 |
+| Rare classes | The no-skill ramp spans at least 10 correctly predicted non-majority samples (`max(0.10, 10 / n_non_majority)`, at most 1). With 10 positives in 2,000 one correct positive moved a model from 39/D to 99/A. | NF3-01 |
+| Regression informativeness | Levels enter the sharpness proxy with a weight that falls from 1 at the calibration tolerance (0.05) to 0 at twice it, and the sub-score is scaled by the best level's weight. A level crossing the tolerance moved the score 51 → 68. This is an admissibility condition for the sharpness evidence, not a second penalty for miscoverage. | NF3-02 |
+| Fairness not assessable | Sensitive features supplied but no two groups of 30 or more samples: the report is partial, like a failed equalized-odds computation. | NF3-06 |
+| Sample-count steps | The 30-sample, 100-sample (overconfidence) and 30-per-group rules stay deliberate steps and are documented as such; a single-class `y_true` logs a warning. | NF3-05 |
 | Continuity tests | Continuity is tested as a Lipschitz bound (score change per signal change), because measured signals such as coverage move in discrete steps on a finite sample. | NF-03 |
 
 **Deviation from the phase-0 plan (R-032).** The plan asked for an xfail test
