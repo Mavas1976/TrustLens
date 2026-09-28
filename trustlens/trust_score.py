@@ -72,7 +72,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from trustlens.visualization.style import BRAND_COLORS
+from trustlens._palette import BRAND_COLORS
 
 # ---------------------------------------------------------------------------
 # Constants

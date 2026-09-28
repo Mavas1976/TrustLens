@@ -49,30 +49,14 @@ from typing import Any
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
+from trustlens._palette import BRAND_COLORS
+
 # ---------------------------------------------------------------------------
 # Brand colors — name lookup for non-categorical use (titles, fills, etc.)
 # ---------------------------------------------------------------------------
 
-BRAND_COLORS: dict[str, str] = {
-    "blue": "#4B8BF5",
-    "orange": "#F5784B",
-    "green": "#34C759",
-    "red": "#FF3B30",
-    "amber": "#FF9F0A",
-    "purple": "#AF52DE",
-    "pink": "#FF2D55",
-    "cyan": "#5AC8FA",
-    "deep_orange": "#FF6B35",
-    "gray": "#8E8E93",
-    "light_gray": "#CCCCCC",
-    "muted_gray": "#AAAAAA",
-    "text_dark": "#444444",
-    "text_muted": "#666666",
-    "text_subtle": "#888888",
-    "light": "#F2F2F7",
-    "white": "#FFFFFF",
-    "dark": "#1C1C1E",
-}
+# BRAND_COLORS lives in trustlens._palette so non-plotting code can use the
+# colours without importing matplotlib (TL-30); re-exported here.
 
 # ---------------------------------------------------------------------------
 # Categorical palette — ordered list for plots with N groups/classes

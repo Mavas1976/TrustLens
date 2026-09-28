@@ -34,7 +34,7 @@ from typing import Any, Optional, cast
 
 import numpy as np
 
-from trustlens.visualization.style import BRAND_COLORS, save_figure
+from trustlens._palette import BRAND_COLORS
 
 from ._version import __version__
 
@@ -1541,6 +1541,8 @@ class TrustReport:
             if fig is None:
                 raise ValueError("Failed to generate summary bias plot.")
             if save_path:
+                from trustlens.visualization.style import save_figure
+
                 save_figure(fig, _get_save_path(save_path), dpi=150, bbox_inches="tight")
             if show:
                 backend = plt.get_backend().lower()
@@ -2159,6 +2161,8 @@ def _plot_failure_grid(
     plt.tight_layout()
 
     if save_path:
+        from trustlens.visualization.style import save_figure
+
         save_figure(fig, save_path, dpi=150, bbox_inches="tight")
 
     plt.close(fig)
