@@ -108,8 +108,10 @@ def test_lightgbm_regressor_rejection():
     model = LGBMRegressor(n_estimators=5, random_state=42)
     model.fit(X, y)
 
-    with pytest.raises(
-        NotImplementedError,
-        match="supports classification models only",
-    ):
-        analyze(model, X, y, verbose=False)
+    # task="auto" routes a fitted regressor to the regression pipeline (TL-07) ...
+    report = analyze(model, X, y, verbose=False)
+    assert report.task_type == "regression"
+
+    # ... while forcing classification still rejects it in the backend.
+    with pytest.raises(NotImplementedError, match="supports classification models only"):
+        analyze(model, X, y, task="classification", verbose=False)

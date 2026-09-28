@@ -30,33 +30,83 @@ from trustlens.report import TrustReport
 logger = logging.getLogger(__name__)
 
 
-def _detect_task(y_true: np.ndarray, task: str) -> str:
+def _estimator_type(model: Any) -> Optional[str]:
+    """Return ``"regressor"`` / ``"classifier"`` for scikit-learn-style models, else None."""
+    if model is None:
+        return None
+    declared = getattr(model, "_estimator_type", None)
+    if declared in ("regressor", "classifier"):
+        return str(declared)
+    try:
+        from sklearn.base import is_classifier, is_regressor
+
+        if is_regressor(model):
+            return "regressor"
+        if is_classifier(model):
+            return "classifier"
+    except Exception:  # noqa: BLE001 - non-sklearn objects may not support tag lookup
+        logger.debug("Could not read estimator tags from %s", type(model).__name__)
+    return None
+
+
+def _detect_task(
+    y_true: np.ndarray,
+    task: str,
+    model: Any = None,
+    y_prob: Optional[np.ndarray] = None,
+) -> str:
     """Resolve the analysis task type.
 
     ``task`` may be ``"classification"`` / ``"regression"`` (explicit, honored
-    as-is) or ``"auto"``. Auto-detection errs toward ``"classification"`` and
-    only returns ``"regression"`` when the target is clearly continuous — a
-    float array that is not integer-valued, or has many distinct values — so a
-    discrete label set is never mis-routed.
+    as-is) or ``"auto"``. Auto-detection uses, in order:
+
+    1. the model: a fitted scikit-learn-style regressor or classifier
+       (``_estimator_type``) decides;
+    2. probabilities: ``y_prob`` implies classification;
+    3. the target: non-integer floats with more than 20 distinct values are
+       regression. Integer-valued targets are class labels when they have at
+       most 20 distinct values or form a contiguous range starting at 0 or 1.
+       Other integer targets whose distinct values make up at least 5% of the
+       samples (counts, prices) are regression (TL-07); a warning asks for an
+       explicit ``task`` because this case is a heuristic.
     """
     if task in ("classification", "regression"):
         return task
     if task != "auto":
         raise ValueError(f"Invalid task {task!r}. Use 'auto', 'classification', or 'regression'.")
 
-    y = np.asarray(y_true)
-    if y.dtype.kind == "f":
-        n_unique = len(np.unique(y))
-        is_integer_valued = bool(np.all(np.isfinite(y))) and bool(np.allclose(y, np.round(y)))
-        # Integer-valued floats are class labels at ANY cardinality (a 25-class
-        # target encoded as float must not be mistaken for regression), and a
-        # small distinct-value set is also label-like. Only clearly-continuous
-        # floats route to regression.
-        if is_integer_valued or n_unique <= 20:
-            return "classification"
+    estimator_type = _estimator_type(model)
+    if estimator_type == "regressor":
         return "regression"
-    # Non-float dtypes (ints, strings, bools) default to classification.
-    return "classification"
+    if estimator_type == "classifier" or y_prob is not None:
+        return "classification"
+
+    y = np.asarray(y_true)
+    if y.dtype.kind not in "fiu":
+        # Strings, bools and objects are labels.
+        return "classification"
+
+    values = np.unique(y)
+    n_unique = len(values)
+    is_integer_valued = y.dtype.kind in "iu" or (
+        bool(np.all(np.isfinite(y))) and bool(np.allclose(y, np.round(y)))
+    )
+    if not is_integer_valued:
+        return "classification" if n_unique <= 20 else "regression"
+
+    if n_unique <= 20:
+        return "classification"
+    first = float(values[0])
+    contiguous = first in (0.0, 1.0) and float(values[-1]) - first == n_unique - 1
+    if contiguous or n_unique / max(len(y), 1) < 0.05:
+        return "classification"
+
+    logger.warning(
+        "task='auto' routed an integer-valued target with %d distinct values to regression. "
+        "Pass task='classification' if these are class labels.",
+        n_unique,
+    )
+    return "regression"
 
 
 def quick_analyze(
@@ -256,7 +306,7 @@ def analyze(
     # 0. Route by task. Regression skips the classification backend (which
     #    resolves class probabilities) and the classification modules.
     # ------------------------------------------------------------------
-    task_type = _detect_task(y_true, task)
+    task_type = _detect_task(y_true, task, model=model, y_prob=y_prob)
     if task_type == "regression":
         if y_pred is None:
             if model is None or not hasattr(model, "predict"):

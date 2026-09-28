@@ -186,7 +186,6 @@ def test_tiny_group_does_not_trigger_fairness_block():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="TL-07")
 def test_integer_valued_regression_target_is_not_classification():
     """TL-07: a count-like target with many distinct values is regression."""
     rng = np.random.default_rng(RNG_SEED)
