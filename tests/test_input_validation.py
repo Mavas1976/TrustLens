@@ -254,19 +254,27 @@ def test_equalized_odds_crash_caps_the_grade(monkeypatch):
         raise RuntimeError("simulated failure")
 
     monkeypatch.setattr(pipeline, "equalized_odds", boom)
-    y, y_pred, y_prob = _binary()
+    # Own generator and a sharp, calibrated model: the uncapped score must
+    # clearly exceed 59 whatever ran before this test.
+    local = np.random.default_rng(11)
+    p = local.choice([0.03, 0.97], N)
+    y = (local.random(N) < p).astype(int)
     ts = analyze(
         None,
         None,
         y,
-        y_pred=y_pred,
-        y_prob=y_prob,
-        sensitive_features={"g": rng.choice(["a", "b"], N)},
+        y_pred=(p >= 0.5).astype(int),
+        y_prob=np.column_stack([1 - p, p]),
+        sensitive_features={"g": local.choice(["a", "b"], N)},
         verbose=False,
     ).trust_score
     assert ts.base_score > 59  # the cap is what brings the grade down
     assert ts.grade == "C" and ts.score == 59
     assert any("equalized odds failed" in c for c in ts.caps_applied)
+    # NF-06: fairness is not assessed (no score from the subgroup gap alone),
+    # so the report is partial and compare() will not recommend it.
+    assert "bias" not in ts.sub_scores
+    assert ts.is_partial and "bias (equalized odds failed)" in ts.missing_dimensions
 
 
 def test_quick_analyze_refuses_model_without_data():
@@ -277,3 +285,90 @@ def test_quick_analyze_refuses_model_without_data():
 
     with pytest.raises(ValueError, match="pass X and y"):
         quick_analyze(LogisticRegression())
+
+
+@pytest.mark.parametrize("dtype", ["string", "object"])
+def test_pandas_na_in_sensitive_feature_forms_missing_group(dtype):
+    """NF-02: pd.NA in a string/object column is a missing value, not a crash."""
+    y, y_pred, y_prob = _binary()
+    feature = pd.Series(rng.choice(["a", "b"], N), dtype=dtype)
+    feature.iloc[:10] = pd.NA
+    report = analyze(
+        None,
+        None,
+        y,
+        y_pred=y_pred,
+        y_prob=y_prob,
+        sensitive_features={"f": feature},
+        verbose=False,
+    )
+    assert "<missing>" in report.results["bias"]["subgroup_performance"]["f"]
+
+
+def test_low_support_groups_are_named_in_a_warning(caplog):
+    """GA-04: excluded groups are logged by name, not silently dropped."""
+    y, y_pred, y_prob = _binary()
+    groups = np.array(["big"] * (N - 10) + ["tinygroupX"] * 10, dtype=object)
+    with caplog.at_level(logging.WARNING, logger="trustlens.core.pipeline"):
+        analyze(
+            None,
+            None,
+            y,
+            y_pred=y_pred,
+            y_prob=y_prob,
+            sensitive_features={"g": groups},
+            verbose=False,
+        )
+    assert "tinygroupX" in caplog.text and "excluded from fairness gaps" in caplog.text
+
+
+def test_quick_analyze_refuses_data_without_model():
+    """NF-08: the caller's data is never swapped for the demo dataset."""
+    from trustlens import quick_analyze
+
+    X = rng.normal(size=(20, 3))
+    with pytest.raises(ValueError, match="fitted model"):
+        quick_analyze(None, X, np.zeros(20, dtype=int))
+
+
+def test_missing_labels_in_object_targets_raise_clearly():
+    """NF3-07: None in an object y_true is a validation error, not a sort crash."""
+    y = np.array(["a", "b"] * (N // 2), dtype=object)
+    y[3] = None
+    with pytest.raises(ValueError, match="missing value"):
+        analyze(None, None, y, y_pred=np.array(["a"] * N, dtype=object), verbose=False)
+
+
+def test_single_class_target_warns(caplog):
+    """NF3-05: the no-skill check cannot run on one class; say so."""
+    y = np.ones(N, dtype=int)
+    p = rng.uniform(0.6, 0.99, N)
+    with caplog.at_level(logging.WARNING, logger="trustlens.core.pipeline"):
+        analyze(
+            None,
+            None,
+            y,
+            y_pred=np.ones(N, dtype=int),
+            y_prob=np.column_stack([1 - p, p]),
+            class_labels=np.array([0, 1]),
+            verbose=False,
+        )
+    assert "single class" in caplog.text
+
+
+def test_fairness_without_comparable_groups_is_partial():
+    """NF3-06: requested but unassessable fairness makes the report partial."""
+    y, y_pred, y_prob = _binary()
+    groups = np.array(["big"] * (N - 10) + ["small"] * 10, dtype=object)
+    ts = analyze(
+        None,
+        None,
+        y,
+        y_pred=y_pred,
+        y_prob=y_prob,
+        sensitive_features={"g": groups},
+        verbose=False,
+    ).trust_score
+    assert "bias" not in ts.sub_scores
+    assert ts.is_partial and ts.score <= 59
+    assert any("no two groups" in d for d in ts.missing_dimensions)

@@ -150,7 +150,7 @@ TrustLens is more than a visualization package—it is a diagnostic framework bu
 
 **Key Finding**: TrustLens empirically decouples **Accuracy** from **Trust**, accurately flagging high-accuracy models that exhibit high reliability risks (the "Overconfidence Zone").
 
-> The benchmark figures were produced with Trust Score methodology 1.x (v0.5.0). Methodology 2.0 changes scores; see [Trust Score Explained](docs/trust_score_explained.md#changes-from-methodology-1x-v050).
+> The benchmark figures were produced with Trust Score methodology 1.x (v0.5.0). Methodology 2.x (current: 2.2) changes scores; see [Trust Score Explained](docs/trust_score_explained.md#changes-from-methodology-1x-v050).
 
 >**[View the Model Zoo Benchmark](examples/trustlens_model_zoo_benchmark.ipynb)**
 

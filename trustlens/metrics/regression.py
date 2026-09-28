@@ -260,14 +260,18 @@ def multilevel_interval_coverage(
       one continuous calibration signal that summarises the whole reliability
       curve rather than a single point on it.
     * **sharpness_skill** — a *calibration-conditioned* sharpness proxy in the
-      spirit of the CRPS Resolution component. Among only the levels that
-      actually pass calibration (``|emp(tau) - tau| <= tolerance``), it compares
-      the model's mean interval width against the climatology interval at the
-      same level: ``1 - mean(model_width / climatology_width)``. Higher is
-      better (intervals sharper than the marginal baseline while staying
-      honest). Restricting to calibrated levels is the point: intervals that
-      look "sharp" only because they are over-confident fail the calibration
-      gate and are excluded, so they cannot inflate the score.
+      spirit of the CRPS Resolution component. It compares the model's mean
+      interval width against the climatology interval at the same level,
+      ``1 - weighted_mean(model_width / climatology_width)``, weighting each
+      level by how well it is calibrated: weight 1 when
+      ``|emp(tau) - tau| <= tolerance``, falling linearly to 0 at twice the
+      tolerance. Higher is better (intervals sharper than the marginal baseline
+      while staying honest). Down-weighting miscalibrated levels is the point:
+      intervals that look "sharp" only because they are over-confident lose
+      their weight beyond the tolerance, and a level drifting across the
+      tolerance changes the proxy gradually (NF3-02). Within the tolerance a
+      sharper, slightly over-confident level still counts fully (the
+      resolution/reliability trade-off).
 
     Why two numbers
     ---------------
@@ -290,13 +294,17 @@ def multilevel_interval_coverage(
       single-PICP fields (``picp``, ``target_coverage``, ``calibration_error``).
     tolerance : float, default=0.05
       Absolute coverage gap within which a level is deemed calibrated — used
-      both for the verdict and as the gate for the sharpness proxy.
+      for the verdict and ``n_calibrated_levels``; the sharpness weight falls
+      from 1 at this gap to 0 at twice this gap.
 
     Returns
     -------
     dict
-      When intervals are supplied: ``ice``, ``sharpness_skill`` (``None`` if no
-      level passes the calibration gate), ``n_levels``, ``n_calibrated_levels``,
+      When intervals are supplied: ``ice``, ``sharpness_skill`` (``None`` if
+      every level misses by at least twice the tolerance), ``sharpness_weight``
+      (the largest level weight, 0..1), ``sharpness_evidence`` (the best
+      level's ``weight × clip(1 - width ratio, 0, 1)``, the monotone quantity
+      the Trust Score uses), ``n_levels``, ``n_calibrated_levels``,
       ``worst_calibration_error`` (most negative ``emp - tau``; drives the
       over-confidence blocker downstream), ``mean_interval_width``, a
       ``per_level`` table, a ``verdict`` and ``n_samples``. A single-level call
@@ -351,6 +359,8 @@ def multilevel_interval_coverage(
     # separate from the rounded per_level report values so display rounding never
     # biases the sharpness proxy.
     ratios: list[float] = []
+    weights: list[float] = []
+    n_calibrated = 0
     worst_cal_err = np.inf
 
     for i, tau in enumerate(levels):
@@ -372,12 +382,22 @@ def multilevel_interval_coverage(
         width = float(np.mean(upper - lower))
         ref_width = float(ref_widths[i])
         calibrated = abs(cal_err) <= tolerance
+        # Soft admission (NF3-02): full weight within the tolerance, falling
+        # linearly to zero at twice the tolerance, so one level drifting across
+        # the gate moves the proxy gradually instead of switching it.
+        if tolerance > 0.0:
+            weight = float(np.clip((2.0 * tolerance - abs(cal_err)) / tolerance, 0.0, 1.0))
+        else:
+            weight = 1.0 if cal_err == 0.0 else 0.0
 
         abs_errors.append(abs(cal_err))
         widths.append(width)
         worst_cal_err = min(worst_cal_err, cal_err)
-        if calibrated and ref_width > 0.0:
+        if calibrated:
+            n_calibrated += 1
+        if weight > 0.0 and ref_width > 0.0:
             ratios.append(width / ref_width)
+            weights.append(weight)
         per_level.append(
             {
                 "level": round(tau, 4),
@@ -390,7 +410,19 @@ def multilevel_interval_coverage(
         )
 
     ice = float(np.mean(abs_errors))
-    sharpness_skill = round(1.0 - float(np.mean(ratios)), 4) if ratios else None
+    sharpness_skill = round(1.0 - float(np.average(ratios, weights=weights)), 4) if ratios else None
+    # Weight of the best-calibrated admitted level: 1 when any level is within
+    # the tolerance, falling to 0 as the last admitted level leaves the band.
+    sharpness_weight = round(max(weights), 4) if weights else 0.0
+    # Scoring evidence (NF6-01): the best level's weighted sharpness,
+    # max_i w_i * clip(1 - ratio_i, 0, 1). Each level can only add evidence,
+    # so widening a level or losing calibration never raises it (the weighted
+    # mean above rises when a wide level drops out).
+    sharpness_evidence = (
+        round(max(w * float(np.clip(1.0 - r, 0.0, 1.0)) for w, r in zip(weights, ratios)), 4)
+        if ratios
+        else 0.0
+    )
 
     if ice <= tolerance:
         verdict = "well-calibrated"
@@ -403,7 +435,9 @@ def multilevel_interval_coverage(
         "ice": round(ice, 4),
         "sharpness_skill": sharpness_skill,
         "n_levels": len(levels),
-        "n_calibrated_levels": len(ratios),
+        "n_calibrated_levels": n_calibrated,
+        "sharpness_weight": sharpness_weight,
+        "sharpness_evidence": sharpness_evidence,
         "worst_calibration_error": round(float(worst_cal_err), 4),
         "mean_interval_width": round(float(np.mean(widths)), 4),
         "per_level": per_level,

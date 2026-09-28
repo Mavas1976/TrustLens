@@ -7,7 +7,7 @@ trustworthiness.
 Responsibilities
 ----------------
 * Aggregate metrics from various modules (calibration, failure, bias, representation).
-* Apply weightings and penalties to calculate a final 0-100 score.
+* Weight the assessed dimensions and apply blockers, caps and ceilings.
 * Determine the model's deployment verdict and letter grade.
 
 Relationship to other components
@@ -30,7 +30,7 @@ a certification or a regulatory assessment (ADR-001).
  * **0–39 (D)**   — Low. Serious issues; do not deploy.
  * **N/A**        — No dimension could be scored (insufficient evidence).
 
-Formula (methodology 2.1)
+Formula (methodology 2.2)
 -------------------------
 1. Score every dimension that was assessed (0–100):
 
@@ -49,15 +49,22 @@ Formula (methodology 2.1)
    failure 0.30, bias 0.25, representation 0.10, renormalised over the
    dimensions present. This is ``base_score``.
 
-3. Blockers (grade D, score capped at 39): accuracy not above the
-   majority-class baseline; overconfidence error > 0.10; a fairness gap > 0.15.
-   Ceiling ramps lead up to the last two, so the score is continuous: the
-   maximum score falls linearly from 100 (overconfidence 0.05, gap 0.10) to
-   39 at the blocker threshold.
+3. Blockers (grade D, score capped at 39): no predictive skill (accuracy not
+   above the majority-class baseline while the error-detection AUROC is below
+   0.6 or unavailable); overconfidence error > 0.10 on at least 100 samples; a
+   fairness gap > 0.15. Ceiling ramps lead up to each blocker, so the score is
+   continuous in the signal: the maximum score falls linearly from 100 to the
+   blocker's 39 as overconfidence goes 0.05 → 0.10, the gap 0.10 → 0.15, and
+   the normalised skill (accuracy − baseline) / (1 − baseline) 0.10 → 0. The
+   skill ramp spans at least 10 correctly predicted non-majority samples, and
+   its end point rises from 39 to 59 as the AUROC goes 0.6 → 0.7.
 
-4. Caps (grade C, score capped at 59): calibration or failure not assessed
-   (``is_partial``). A sub-score below 40 lowers the ceiling from 100 to 59
-   (reached at 30).
+4. Caps (grade C, score capped at 59): an incomplete assessment
+   (``is_partial``: calibration or failure not assessed, or fairness requested
+   but not assessable) and fewer than 30 samples. A sub-score below 40 lowers
+   the ceiling from 100 to 59 (reached at 30). Sample-count rules (30 samples,
+   100 samples for the overconfidence blocker, 30 per fairness group) are
+   deliberate steps, not ramps.
 
 Every signal is counted once. There are no additive penalties
 (``penalties_applied`` is always empty since 2.0). The grade always matches the
@@ -81,7 +88,7 @@ import numpy as np
 # Constants
 # ---------------------------------------------------------------------------
 
-SCORE_VERSION = "2.1"
+SCORE_VERSION = "2.2"
 
 # Grade reported when no dimension could be scored (insufficient evidence).
 NOT_ASSESSED_GRADE = "N/A"
@@ -114,6 +121,16 @@ _BLOCK_FAIRNESS_GAP = 0.15  # equals the "severe" level of the fairness metrics
 # No-skill blocker only when confidence also carries little information about
 # errors; otherwise the decision threshold, not the model, is the problem.
 _NO_SKILL_AUROC = 0.6
+# No-skill ceiling (methodology 2.2, NF-01): normalised skill
+# (accuracy - baseline) / (1 - baseline) at which the ceiling is lifted, and the
+# error-detection AUROC at which a model without decision skill is limited to
+# grade C instead of D. Between the ends the ceiling moves linearly, so one
+# extra correct prediction cannot jump a model from D to A.
+_NO_SKILL_RAMP_END = 0.10
+_NO_SKILL_AUROC_FULL = 0.70
+# With few minority samples 0.10 of skill is a single prediction, so the ramp
+# spans at least this many correctly predicted non-majority samples (NF3-01).
+_NO_SKILL_RAMP_MIN_SAMPLES = 10
 # Below this many samples the overconfidence error is too noisy to block on
 # (P(OCE > 0.10) ≈ 0.2 at n = 30 for a perfectly calibrated model).
 _MIN_SAMPLES_OVERCONFIDENCE = 100
@@ -141,6 +158,12 @@ _WEAK_DIMENSION = 40.0  # below this an assessed sub-score starts lowering the s
 # ---------------------------------------------------------------------------
 
 
+def _equalized_odds_failed(bias_data: object) -> bool:
+    """True when the equalized-odds computation raised inside the pipeline."""
+    eo = bias_data.get("equalized_odds") if isinstance(bias_data, dict) else None
+    return isinstance(eo, dict) and eo.get("reason") == "computation_error"
+
+
 def _is_assessed(dimension: str, data: object) -> bool:
     """Return True when a module result carries the evidence its sub-score needs.
 
@@ -161,7 +184,9 @@ def _is_assessed(dimension: str, data: object) -> bool:
             and data.get("confidence_gap", {}).get("status") != "skipped"
         )
     if dimension == "bias":
-        return bool(_fairness_gaps(data))
+        # A crashed equalized-odds computation leaves fairness unassessed: the
+        # subgroup gap alone would make the model look fairer than it is (GB-06).
+        return not _equalized_odds_failed(data) and bool(_fairness_gaps(data))
     if dimension == "representation":
         silhouette = data.get("separability", {}).get("silhouette_score")
         return silhouette is not None and bool(np.isfinite(float(silhouette)))
@@ -292,7 +317,8 @@ class TrustScoreResult:
       Regression only (``None`` for classification). Explains how the Uncertainty
       Informativeness dimension was resolved: ``"present"`` (a sharpness proxy or
       error-variance correlation was scored), ``"unusable_uncertainty"``
-      (multi-level intervals were supplied but none passed the calibration gate,
+      (multi-level intervals were supplied but every level missed nominal
+      coverage by at least twice the calibration tolerance,
       so the dimension is scored a truthful ``0.0`` rather than dropped), or
       ``"absent"`` (no uncertainty evidence was supplied and the dimension's
       weight was redistributed). Lets a downstream consumer tell "0.0 because the
@@ -344,7 +370,7 @@ class TrustScoreResult:
             lines.append(f"  - {dim:<18} {score:5.1f}/100")
         if self.informativeness_status == "unusable_uncertainty":
             lines.append(
-                "  (informativeness = 0.0: intervals supplied but none passed the calibration gate)"
+                "  (informativeness = 0.0: intervals supplied but no level is calibrated enough)"
             )
         return "\n".join(lines)
 
@@ -480,7 +506,7 @@ def compute_trust_score(
     weights: dict[str, float] | None = None,
 ) -> TrustScoreResult:
     """
-    Compute the classification Trust Score (methodology v2.0) from a results dict.
+    Compute the classification Trust Score (methodology ``SCORE_VERSION``) from a results dict.
 
     Parameters
     ----------
@@ -501,8 +527,9 @@ def compute_trust_score(
     -----
     See the module docstring and ADR-001 for the formulas. In short: the
     weighted mean of the assessed sub-scores, then blockers (grade D, score
-    ≤ 39) and caps (grade C, score ≤ 59). Signals are counted once; there are no
-    additive penalties.
+    ≤ 39) and caps (grade C, score ≤ 59). Every blocker is approached by a
+    ceiling that falls linearly towards 39, so the score has no cliffs. Signals
+    are counted once; there are no additive penalties.
 
     Examples
     --------
@@ -523,6 +550,17 @@ def compute_trust_score(
         dim: fn(results[dim]) for dim, fn in scorers.items() if _is_assessed(dim, results.get(dim))
     }
     missing_dimensions = [d for d in _CORE_DIMENSIONS if d not in sub_scores]
+    bias_raw = results.get("bias")
+    if _equalized_odds_failed(bias_raw):
+        missing_dimensions.append("bias (equalized odds failed)")
+    elif (
+        isinstance(bias_raw, dict)
+        and bias_raw.get("subgroup_performance")
+        and "bias" not in sub_scores
+    ):
+        # Sensitive features were supplied but no two groups were large enough
+        # to compare: fairness was requested and not assessed (NF3-06).
+        missing_dimensions.append("bias (no two groups large enough to compare)")
     is_partial = bool(missing_dimensions)
 
     # 2. Weighted mean over the assessed dimensions
@@ -543,24 +581,69 @@ def compute_trust_score(
     # 3. Blockers: critical signals that must not be averaged away
     blockers: list[str] = []
     caps: list[str] = []
+    ceilings: list[tuple[float, str]] = []
     auroc = failure.get("confidence_auroc")
-    if accuracy is not None and baseline is not None and baseline < 1.0 and accuracy <= baseline:
+    if accuracy is not None and baseline is not None and baseline < 1.0:
         # With a single class in y_true every correct model "ties" the baseline,
         # so the check needs at least two classes (baseline < 1).
-        if auroc is None or float(auroc) < _NO_SKILL_AUROC:
+        skill = (accuracy - baseline) / (1.0 - baseline)
+        informative = auroc is not None and float(auroc) >= _NO_SKILL_AUROC
+        if skill <= 0 and not informative:
             blockers.append(
                 f"Blocked by no predictive skill (accuracy {accuracy:.3f} does not beat "
                 f"the majority-class baseline {baseline:.3f})"
             )
         else:
-            # Confidence still ranks errors (e.g. a calibrated rare-event model
-            # whose scores never cross 0.5): the decisions lack skill, the model
-            # may not. Flag, do not block.
-            caps.append(
-                f"Decisions do not beat the majority-class baseline (accuracy {accuracy:.3f} "
-                f"vs {baseline:.3f}); review the decision threshold (capped at grade C)"
-            )
-    ceilings: list[tuple[float, str]] = []
+            # Confidence that ranks errors (e.g. a calibrated rare-event model
+            # whose scores never cross 0.5) lifts the floor from 39 towards 59:
+            # the decisions lack skill, the model may not.
+            detection = 0.0
+            if accuracy >= 1.0:
+                # No errors: nothing to detect, as in the failure sub-score (NF5-02).
+                detection = 1.0
+            elif auroc is not None:
+                detection = float(
+                    np.clip(
+                        (float(auroc) - _NO_SKILL_AUROC) / (_NO_SKILL_AUROC_FULL - _NO_SKILL_AUROC),
+                        0.0,
+                        1.0,
+                    )
+                )
+            floor = _BLOCKED_SCORE_CAP + (_CAPPED_SCORE_CAP - _BLOCKED_SCORE_CAP) * detection
+            ramp_end = _NO_SKILL_RAMP_END
+            n_minority = 0.0
+            n_eval = failure.get("n_samples", calibration.get("n_samples"))
+            if n_eval is None:
+                # Results saved before n_samples was recorded (NF4-03).
+                counts = (results.get("bias") or {}).get("class_imbalance", {}).get("class_counts")
+                if counts:
+                    n_eval = sum(int(c) for c in counts.values())
+            if n_eval:
+                n_minority = int(n_eval) * (1.0 - baseline)
+                if n_minority > 0:
+                    # Not capped at 1: with fewer than 10 non-majority samples
+                    # even a perfect model cannot show enough skill to lift the
+                    # ceiling fully, and each correct prediction stays a small
+                    # step (NF4-02).
+                    ramp_end = max(ramp_end, _NO_SKILL_RAMP_MIN_SAMPLES / n_minority)
+            limit = _ramp_ceiling(ramp_end - skill, 0.0, ramp_end, floor)
+            if limit is not None:
+                if skill <= 0:
+                    reason = (
+                        f"Decisions do not beat the majority-class baseline (accuracy "
+                        f"{accuracy:.3f} vs {baseline:.3f}); review the decision threshold"
+                    )
+                elif ramp_end > _NO_SKILL_RAMP_END:
+                    reason = (
+                        f"Only {n_minority:.0f} non-majority sample(s) in the evaluation set: "
+                        "too little evidence of skill"
+                    )
+                else:
+                    reason = (
+                        f"Accuracy {accuracy:.3f} barely beats the majority-class baseline "
+                        f"{baseline:.3f}"
+                    )
+                ceilings.append((limit, f"{reason}; limits the score to {int(np.floor(limit))}"))
     oce = calibration.get("overconfidence_error")
     if oce is not None:
         oce_value = float(oce)
@@ -605,10 +688,6 @@ def compute_trust_score(
                 )
 
     # 4. Caps: an incomplete assessment or a very weak dimension cannot pass
-    eo = (results.get("bias") or {}).get("equalized_odds")
-    if isinstance(eo, dict) and eo.get("reason") == "computation_error":
-        # A crash must not make fairness look better than it is (GB-06).
-        caps.append("Fairness assessment incomplete: equalized odds failed (capped at grade C)")
     n_samples = failure.get("n_samples", calibration.get("n_samples"))
     if n_samples is not None and int(n_samples) < _MIN_SAMPLES_FOR_GRADE:
         caps.append(
@@ -686,10 +765,11 @@ def compute_trust_score(
 #                                      when multi-level intervals are supplied,
 #                                      else single-level PICP |calibration_error|,
 #                                      through a tolerance (regression analog of ECE).
-#   Uncertainty Informativeness 0.30   calibration-conditioned sharpness proxy vs a
-#                                      climatology reference (RFC #155) when multi-
-#                                      level intervals are supplied, else max(pearson,
-#                                      spearman) of predicted uncertainty vs error.
+#   Uncertainty Informativeness 0.30   the larger of the calibration-weighted
+#                                      sharpness evidence vs a climatology reference
+#                                      (RFC #155; interval mappings) and max(pearson,
+#                                      spearman) of predicted uncertainty vs error
+#                                      (predicted variance) - methodology 2.2.
 #
 # Point-prediction-only reports score on Accuracy alone (the other two are
 # redistributed away), exactly as a no-embeddings classification report drops
@@ -697,7 +777,9 @@ def compute_trust_score(
 #
 # Blockers (→ grade D, score ≤ 39): negative skill (S < 0); severe interval
 #                        miscoverage (calibration_error < −0.10 — materially
-#                        over-confident).
+#                        over-confident). Ceilings lead up to both (methodology
+#                        2.2): S 0.10 → 0 and shortfall 0.05 → 0.10 lower the
+#                        maximum score from 100 to 39.
 # Inside a sub-score only: a heavy tail docks the Accuracy/Skill dimension. Weak
 #                        uncertainty correlation lowers Informativeness and is not
 #                        penalised a second time (methodology 2.0, TL-09).
@@ -715,14 +797,15 @@ _REGRESSION_DEFAULT_WEIGHTS: dict[str, float] = {
 # than — the 0.05 calibration GATE in metrics/regression.py
 # (``multilevel_interval_coverage``'s ``tolerance``). They answer different
 # questions and should NOT be unified:
-#   * 0.05 (metric layer) is a strict binary gate: which levels are calibrated
-#     *enough* to be admitted into the sharpness proxy, so over-confident
-#     intervals cannot be rewarded for looking "sharp". A hard pass/fail per level.
+#   * 0.05 (metric layer) decides which levels are calibrated *enough* to count
+#     fully in the sharpness proxy, so over-confident intervals cannot be
+#     rewarded for looking "sharp". Since methodology 2.2 a level's weight falls
+#     linearly from 1 at 0.05 to 0 at 0.10 instead of a hard pass/fail (NF3-02).
 #   * 0.20 (here) is a smooth ramp mapping the continuous ICE / |calibration_error|
 #     onto the 0–100 sub-score, so calibration quality degrades gracefully rather
 #     than cliff-edging. A gradient, not a gate.
-# Using 0.05 for the ramp would turn the sub-score into a cliff; using 0.20 for
-# the gate would let materially miscalibrated levels inflate the sharpness proxy.
+# Using 0.05 for the ramp would make the sub-score far too steep; using 0.20 for
+# admission would let materially miscalibrated levels inflate the sharpness proxy.
 _REG_CALIBRATION_TOLERANCE = 0.20
 
 # Heavy-tail penalty (docks the Accuracy/Skill dimension). The p90/median
@@ -736,6 +819,11 @@ _REG_MAX_TAIL_DOCK_FRACTION = 0.50
 # Severe-miscoverage blocker: realised coverage this far below nominal means the
 # intervals are materially over-confident (the regression "confidently wrong").
 _REG_SEVERE_MISCOVERAGE = -0.10
+# Ceiling ramps before the regression blockers (methodology 2.2, NF-03): the
+# ceiling falls from 100 to 39 as the skill drops from 0.10 to 0, and as the
+# coverage shortfall grows from 0.05 to 0.10, so neither blocker is a cliff.
+_REG_SKILL_RAMP_END = 0.10
+_REG_MISCOVERAGE_RAMP_START = -0.05
 
 
 def _regression_accuracy_score(error_dist: dict, target_variance: float) -> dict[str, float]:
@@ -815,18 +903,33 @@ def _uncertainty_informativeness_score(corr: dict) -> float:
     return 100.0 * float(np.clip(strongest, 0.0, 1.0))
 
 
-def _informativeness_from_sharpness(coverage: dict) -> float:
+def _informativeness_from_sharpness(coverage: dict, fallback: float | None = None) -> float:
     """
     Uncertainty-informativeness sub-score (0–100) from the calibration-conditioned
     sharpness proxy (RFC #155).
 
-    ``100 × clip(sharpness_skill, 0, 1)`` — rewards intervals sharper than the
-    climatology baseline *among the levels that pass calibration*, the
-    CRPS-Resolution analog of the correlation-based score. Preferred over the
-    error-variance correlation when multi-level intervals are available.
+    ``max(100 × sharpness_evidence, fallback)``, where ``sharpness_evidence`` is
+    the best level's ``w × clip(1 − width ratio, 0, 1)`` (``w`` = 1 within the
+    calibration tolerance, 0 at twice it) and ``fallback`` the error-variance
+    correlation score when predicted variance was supplied, else 0. Rewards
+    intervals sharper than the climatology baseline among well-calibrated
+    levels, the CRPS-Resolution analog of the correlation-based score; the
+    stronger of the two pieces of evidence counts (methodology 2.2).
     """
-    skill = float(coverage.get("sharpness_skill") or 0.0)
-    return 100.0 * float(np.clip(skill, 0.0, 1.0))
+    if "sharpness_evidence" in coverage:
+        # Best level's weight × sharpness (NF6-01): monotone in every level's
+        # calibration and width.
+        sharpness = 100.0 * float(np.clip(float(coverage["sharpness_evidence"]), 0.0, 1.0))
+    else:
+        # Older results: weighted-mean sharpness scaled by the best weight
+        # (NF3-02), or the plain proxy before that.
+        skill = float(coverage.get("sharpness_skill") or 0.0)
+        weight = float(np.clip(float(coverage.get("sharpness_weight", 1.0)), 0.0, 1.0))
+        sharpness = weight * 100.0 * float(np.clip(skill, 0.0, 1.0))
+    # The stronger of the two pieces of evidence (NF5-03): worse-calibrated
+    # intervals never raise the score, and once no level is usable the
+    # error-variance correlation score applies (``fallback``), else 0.
+    return max(sharpness, fallback or 0.0)
 
 
 def _reg_metric_present(metric: dict | None) -> bool:
@@ -937,31 +1040,37 @@ def regression_trust_score(
         )
         sub_scores["interval_calibration"] = _interval_calibration_score(coverage)
 
-    # Uncertainty Informativeness: prefer the calibration-conditioned sharpness
-    # proxy (multi-level intervals, RFC #155); fall back to the error-variance
-    # correlation when only predicted variance is available.
+    # Uncertainty Informativeness: the stronger of the calibration-weighted
+    # sharpness evidence (interval mappings, RFC #155) and the error-variance
+    # correlation (predicted variance); either alone when only one is supplied.
     sharpness_skill = coverage.get("sharpness_skill") if coverage_present else None
     n_interval_levels = int(coverage.get("n_levels", 0)) if coverage_present else 0
     n_calibrated_levels = int(coverage.get("n_calibrated_levels", 0)) if coverage_present else 0
     corr_present = _reg_metric_present(corr) and ("pearson" in corr or "spearman" in corr)
     informativeness_status = "absent"
     if sharpness_skill is not None:
-        sub_scores["uncertainty_informativeness"] = _informativeness_from_sharpness(coverage)
+        fallback = _uncertainty_informativeness_score(corr) if corr_present else None
+        sub_scores["uncertainty_informativeness"] = _informativeness_from_sharpness(
+            coverage, fallback
+        )
         informativeness_status = "present"
     elif corr_present:
         sub_scores["uncertainty_informativeness"] = _uncertainty_informativeness_score(corr)
         informativeness_status = "present"
-    elif n_interval_levels >= 2 and n_calibrated_levels == 0:
+    elif n_calibrated_levels == 0 and (
+        n_interval_levels >= 2 or (n_interval_levels >= 1 and "sharpness_weight" in coverage)
+    ):
         # RFC #155 follow-up (PR #161 review): multi-level intervals WERE
-        # supplied, but the calibration gate rejected every level, so
+        # supplied, but every level fell outside the calibration band, so
         # ``sharpness_skill`` is None because the uncertainty was *unusable*,
         # not because it was absent — and there is no error-variance-correlation
         # fallback either. Score a truthful ``Informativeness = 0.0`` instead of
         # dropping the dimension and redistributing its 0.30 weight: "the
         # supplied uncertainty delivered zero usable resolution" is a real,
         # scorable failure, distinct from "no uncertainty was provided at all"
-        # (which stays on the redistribute path). Scoped to the multi-level path
-        # (``n_levels >= 2``): the single-level PICP path has no
+        # (which stays on the redistribute path). Applies to every mapping from
+        # multilevel_interval_coverage, including a single level (NF5-01), and to
+        # older multi-level results; a legacy single-level PICP dict has no
         # "we tried and it was unusable" signal and keeps redistributing.
         sub_scores["uncertainty_informativeness"] = 0.0
         informativeness_status = "unusable_uncertainty"
@@ -989,19 +1098,43 @@ def regression_trust_score(
     #    former extra composite penalty counted the same signal twice (TL-09).
     # ------------------------------------------------------------------
     blockers: list[str] = []
+    ceilings: list[tuple[float, str]] = []
     if skill < 0.0:
         blockers.append("Blocked by negative skill (worse than predicting the mean; R^2 < 0)")
-    elif (
-        interval_present
-        and calibration_error is not None
-        and calibration_error < _REG_SEVERE_MISCOVERAGE
-    ):
-        blockers.append(
-            f"Blocked by severe interval miscoverage (coverage {calibration_error:+.2f} "
-            "below nominal - over-confident intervals)"
+    else:
+        limit = _ramp_ceiling(
+            _REG_SKILL_RAMP_END - skill, 0.0, _REG_SKILL_RAMP_END, float(_BLOCKED_SCORE_CAP)
         )
-
-    final_score, base_score, grade, verdict, _ = _finalize(raw_score, blockers, [])
+        if limit is not None:
+            ceilings.append(
+                (
+                    limit,
+                    f"Skill R^2 {skill:.3f} is close to the mean predictor; limits the score "
+                    f"to {int(np.floor(limit))}",
+                )
+            )
+    if interval_present and calibration_error is not None:
+        if calibration_error < _REG_SEVERE_MISCOVERAGE:
+            blockers.append(
+                f"Blocked by severe interval miscoverage (coverage {calibration_error:+.2f} "
+                "below nominal - over-confident intervals)"
+            )
+        else:
+            limit = _ramp_ceiling(
+                -calibration_error,
+                -_REG_MISCOVERAGE_RAMP_START,
+                -_REG_SEVERE_MISCOVERAGE,
+                float(_BLOCKED_SCORE_CAP),
+            )
+            if limit is not None:
+                ceilings.append(
+                    (
+                        limit,
+                        f"Interval coverage {calibration_error:+.3f} below nominal limits the "
+                        f"score to {int(np.floor(limit))}",
+                    )
+                )
+    final_score, base_score, grade, verdict, binding = _finalize(raw_score, blockers, [], ceilings)
 
     return TrustScoreResult(
         score=final_score,
@@ -1014,6 +1147,7 @@ def regression_trust_score(
         base_score=base_score,
         is_blocked=bool(blockers),
         blockers=blockers,
+        caps_applied=binding,
         task_type="regression",
         informativeness_status=informativeness_status,
     )

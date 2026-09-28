@@ -43,7 +43,17 @@ methodology version must satisfy:
 - Rescaling a regression target and its predictions together does not change the score.
 - Fairness gaps are computed only from defined rates (TPR needs positives, FPR
   needs negatives) and from groups with enough support.
-- Worse calibration with the same predictions never raises the score.
+- Worse calibration with the same predictions never raises the score. For
+  regression intervals this holds for widening a level or shifting it away
+  from nominal coverage; narrowing a level trades sharpness against
+  calibration, and within the 0.05 calibration tolerance a sharper, slightly
+  over-confident level can raise the informativeness sub-score (the
+  resolution/reliability trade-off; an open design question, see §5).
+  This invariant is about the scoring mechanisms (ceilings, blockers, the
+  informativeness rule). The underlying metrics are not monotone in every
+  change of input: an extra error can lower ECE for an under-confident model,
+  shrink a fairness gap by levelling down, or raise the error-detection AUROC,
+  and the failure sub-score's error weight saturates at a 20% error rate.
 - Text derived from user data is escaped in every HTML output.
 
 A change that moves a reference model to another grade band must update the
@@ -101,13 +111,48 @@ without changing weights, thresholds or dimensions.
 | Weak dimension | Replaced the hard cap at a sub-score of 40 with a ceiling from 100 (at 40) to 59 (at 30). | GA-02 |
 | Published table | `tests/reference/test_published_table.py` recomputes every current-methodology value in Trust Score Explained, so the documentation cannot drift from the code. | GA-10 |
 
+### 4c. Methodology 2.2 (`score_version = "2.2"`)
+
+A second independent verification found that two blockers were still cliffs
+and that `compare()` could rank incomparable reports. Weights, dimensions and
+the ramped thresholds of 2.1 are unchanged; no reference model changes score.
+
+| Topic | Decision | Issue |
+|---|---|---|
+| No-skill blocker | Ceiling on the normalised skill `(accuracy − baseline) / (1 − baseline)`: 100 at 0.10, falling to its end point at 0. The end point is 39 when the error-detection AUROC is at most 0.6 (a blocker below 0.6 or without probabilities) and rises linearly to 59 at AUROC 0.7, replacing the separate "review the decision threshold" cap. In 2.1 one extra correct positive in 2,000 moved a model from 39/D to 88/A. | NF-01 |
+| Regression blockers | Ceilings from 100 to 39 as the skill (R²) falls from 0.10 to 0 and as the coverage shortfall grows from 0.05 to 0.10. In 2.1 coverage −0.0998 gave 68/B and −0.1016 gave 39/D. | NF-03 |
+| Failed equalized odds | Fairness is not assessed (no score from the subgroup gap alone) and the report is partial, listing `bias (equalized odds failed)`. The score can still exceed that of a successful run with a large gap, but a partial report is capped at C and is never recommended by `compare()`. | NF-06 |
+| `compare()` | No recommendation when eligible reports were scored on different dimensions (for example one with fairness, one without). | R-011 |
+| Rare classes | The no-skill ramp spans at least 10 correctly predicted non-majority samples (`max(0.10, 10 / n_non_majority)`, deliberately not capped at 1: with fewer than 10 non-majority samples even a perfect model cannot fully lift the ceiling). With 10 positives in 2,000 one correct positive moved a model from 39/D to 99/A. Results without `n_samples` take the count from the class counts. | NF3-01, NF4-02, NF4-03 |
+| Regression informativeness | Levels enter the sharpness proxy with a weight that falls from 1 at the calibration tolerance (0.05) to 0 at twice it, and the sub-score is `max(100 × sharpness_evidence, correlation score)`, where `sharpness_evidence = max_i w_i × clip(1 − width ratio_i, 0, 1)` is monotone in every level (a weighted mean rose when a wide level was widened further and dropped out, NF6-01) and the correlation score only when predicted variance was supplied (else 0). A level crossing the tolerance moved the score 51 → 68. The earlier rules "the proxy always wins over the correlation" and "fall back to the correlation when no level is usable" together made worse intervals raise the score (32 → 44, later up to +18 with a linear blend), so the proxy-first rule was dropped: the stronger evidence counts, and miscalibration is scored once, in interval calibration. Unusable intervals from a single-level mapping now score 0 like multi-level ones instead of dropping the dimension. The calibration weight is an admissibility condition for the sharpness evidence, not a second penalty for miscoverage. | NF3-02, NF4-01, NF5-01, NF5-03, NF6-01 |
+| Perfect models, few minority samples | A model without errors counts as full error detection (end point 59), as in the failure sub-score, so one more error never raises the no-skill ceiling; the limit for a perfect model is `59 + 41 × n_non_majority / 10` below ten non-majority samples. Results without `n_samples` or class counts keep the 0.10 ramp. | NF5-02, NF5-05 |
+| Fairness not assessable | Sensitive features supplied but no two groups of 30 or more samples: the report is partial, like a failed equalized-odds computation. | NF3-06 |
+| Sample-count steps | The 30-sample, 100-sample (overconfidence) and 30-per-group rules stay deliberate steps and are documented as such; a single-class `y_true` logs a warning. | NF3-05 |
+| Continuity tests | Continuity is tested as a Lipschitz bound (score change per signal change), because measured signals such as coverage move in discrete steps on a finite sample. | NF-03 |
+
+**Deviation from the phase-0 plan (R-032).** The plan asked for an xfail test
+per critical and high issue before its fix. The fixes for TL-09, TL-10 and
+TL-11 landed before those tests existed, so xfail-first can no longer be shown
+for them. Instead, every issue has a regression test that fails on the
+pre-fix code; for the 2.2 changes this was checked by running the new tests
+against the 2.1 code and against targeted mutants.
+
 ### 5. Open questions
+
+- Regression sharpness vs calibration (NF7-01): the informativeness evidence
+  gives full weight to any level within the 0.05 calibration tolerance, so
+  narrowing a level until it is slightly over-confident can raise the score
+  (up to about +8 points in the verifier's repro, and a few cases up to +11
+  across a random search). Options: start the calibration weight falling at 0
+  instead of at the tolerance, weight sharpness by the level's own coverage
+  error, or accept the trade-off as documented. This is a methodology decision
+  for the maintainer.
 
 - The package version is still 0.5.0 while the scores follow methodology 2.0.
   `score_version` identifies the methodology. Bump the package version when
   releasing (a maintainer decision).
-- The example notebooks (`examples/*.ipynb`) still describe penalties from 1.x
-  in their stored outputs. They need re-running under 2.0.
+- The example notebooks are executed in CI; their stored outputs were refreshed
+  under 2.2 with `python scripts/run_notebooks.py --write`.
 
 - Regression point-only reports score on accuracy alone (RFC #145) and are not
   marked partial. Revisit this if users read such scores as complete.

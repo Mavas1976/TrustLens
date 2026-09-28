@@ -510,3 +510,65 @@ def test_crps_decomposition_counts_observations_outside_the_intervals():
     assert decomposed["reliability"] + decomposed["crps_potential"] == pytest.approx(
         decomposed["crps"]
     )
+
+
+def _intervals_with_coverage(y, coverage, half_width):
+    """Intervals of constant width 2*half_width covering exactly ``coverage`` of y."""
+    k = int(round(coverage * y.size))
+    covered = np.arange(y.size) < k
+    lower = np.where(covered, y - half_width, y + 0.5)
+    upper = np.where(covered, y + half_width, y + 0.5 + 2 * half_width)
+    return lower, upper
+
+
+def test_sharpness_levels_are_weighted_by_calibration():
+    """NF3-02 / NF4-04: weight 1 within the tolerance, 0 at twice it, linear between."""
+    y = np.linspace(0.0, 100.0, 1000)
+    spec = {0.5: (0.5, 10.0), 0.8: (0.725, 20.0), 0.9: (0.78, 30.0)}  # errors 0, -0.075, -0.12
+    intervals = {lvl: _intervals_with_coverage(y, cov, hw) for lvl, (cov, hw) in spec.items()}
+    out = multilevel_interval_coverage(y, intervals, tolerance=0.05)
+
+    def ratio(lvl, hw):
+        ref = np.quantile(y, 0.5 + lvl / 2) - np.quantile(y, 0.5 - lvl / 2)
+        return 2 * hw / ref
+
+    expected = 1 - (1.0 * ratio(0.5, 10.0) + 0.5 * ratio(0.8, 20.0)) / 1.5
+    assert out["n_calibrated_levels"] == 1
+    assert out["sharpness_weight"] == 1.0
+    assert out["sharpness_skill"] == pytest.approx(expected, abs=1e-4)
+
+    # Every level inside the band but none within the tolerance: the best
+    # weight is below 1 and n_calibrated_levels counts only the calibrated ones.
+    band = {0.5: (0.425, 10.0), 0.8: (0.71, 20.0)}  # errors -0.075, -0.09
+    intervals = {lvl: _intervals_with_coverage(y, cov, hw) for lvl, (cov, hw) in band.items()}
+    out = multilevel_interval_coverage(y, intervals, tolerance=0.05)
+    assert out["n_calibrated_levels"] == 0
+    assert out["sharpness_weight"] == pytest.approx(0.5)
+    assert out["sharpness_skill"] is not None
+
+
+def test_sharpness_evidence_is_the_best_weighted_level():
+    """NF6-01: scoring evidence is max_i w_i * clip(1 - ratio_i, 0, 1)."""
+    y = np.linspace(0.0, 100.0, 1000)
+    spec = {0.5: (0.5, 10.0), 0.8: (0.725, 20.0)}  # weights 1 and 0.5
+    intervals = {lvl: _intervals_with_coverage(y, cov, hw) for lvl, (cov, hw) in spec.items()}
+    out = multilevel_interval_coverage(y, intervals, tolerance=0.05)
+
+    def term(lvl, hw, w):
+        ref = np.quantile(y, 0.5 + lvl / 2) - np.quantile(y, 0.5 - lvl / 2)
+        return w * min(max(1 - 2 * hw / ref, 0.0), 1.0)
+
+    expected = max(term(0.5, 10.0, 1.0), term(0.8, 20.0, 0.5))
+    assert out["sharpness_evidence"] == pytest.approx(expected, abs=1e-4)
+
+
+def test_sharpness_evidence_uses_each_level_own_weight():
+    """NF7-03: a narrow but half-weighted level beats a calibrated wide one, and
+    weight and ratio come from the same level."""
+    y = np.linspace(0.0, 100.0, 1000)
+    ref50 = np.quantile(y, 0.75) - np.quantile(y, 0.25)
+    ref80 = np.quantile(y, 0.9) - np.quantile(y, 0.1)
+    spec = {0.5: (0.5, 0.45 * ref50), 0.8: (0.725, 0.1 * ref80)}  # ratios 0.9 (w 1), 0.2 (w 0.5)
+    intervals = {lvl: _intervals_with_coverage(y, cov, hw) for lvl, (cov, hw) in spec.items()}
+    out = multilevel_interval_coverage(y, intervals, tolerance=0.05)
+    assert out["sharpness_evidence"] == pytest.approx(0.5 * 0.8, abs=2e-3)

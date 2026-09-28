@@ -88,8 +88,9 @@ def _detect_task(
     2. probabilities: ``y_prob`` implies classification;
     3. the target: fractional floats are regression; integer-valued targets
        with at most 20 distinct values are class labels; integer targets whose
-       distinct values are spread out (not a contiguous 0..K / 1..K range) and
-       make up at least 5% of the samples are regression, with a warning.
+       distinct values are spread out (not a dense range starting at 0 or 1,
+       where a few absent classes still count as dense) and make up at least 5%
+       of the samples are regression, with a warning.
        Anything else is ambiguous and raises ``ValueError`` asking for an
        explicit ``task`` (TL-07, GA-06).
     """
@@ -121,15 +122,18 @@ def _detect_task(
     if n_unique <= 20:
         return "classification"
     first = float(values[0])
-    contiguous = first in (0.0, 1.0) and float(values[-1]) - first == n_unique - 1
-    if not contiguous and n_unique / max(len(y), 1) >= 0.05:
+    # Labels 0..K or 1..K with some classes absent from this sample still look
+    # like labels (NF-05): treat the range as dense while at most a third of it
+    # is missing.
+    dense = first in (0.0, 1.0) and float(values[-1]) - first <= 1.5 * (n_unique - 1)
+    if not dense and n_unique / max(len(y), 1) >= 0.05:
         logger.warning(
             "task='auto' routed an integer-valued target with %d distinct values to "
             "regression. Pass task='classification' if these are class labels.",
             n_unique,
         )
         return "regression"
-    # Many contiguous integers (0..K or 1..K) or few distinct values per sample:
+    # Many dense integers (0..K or 1..K) or few distinct values per sample:
     # class labels and counts look the same, so ask instead of guessing (GA-06).
     raise ValueError(
         f"Cannot tell whether an integer target with {n_unique} distinct values is class "
@@ -166,6 +170,12 @@ def quick_analyze(
     if model is not None and (X is None or y is None):
         # Never silently swap the caller's model for a demo model (GB-17).
         raise ValueError("quick_analyze(model, X, y): pass X and y together with the model.")
+    if model is None and (X is not None or y is not None):
+        # ...nor the caller's data for the demo dataset (NF-08).
+        raise ValueError(
+            "quick_analyze(model, X, y): pass a fitted model with X and y, or nothing at all "
+            "for the demo."
+        )
     using_demo = model is None or X is None or y is None
     if using_demo:
         logger.info("No model/data provided. Auto-loading %s dataset for demo...", dataset)

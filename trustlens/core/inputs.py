@@ -54,7 +54,14 @@ def _as_1d(values: Any, name: str) -> np.ndarray:
 
 
 def _require_finite(arr: np.ndarray, name: str) -> None:
-    """Targets and predictions must not contain NaN/Inf (GA-07)."""
+    """Targets and predictions must not contain NaN/Inf or missing labels (GA-07, NF3-07)."""
+    if arr.dtype.kind == "O":
+        missing = int(sum(_is_missing(v) for v in arr))
+        if missing:
+            raise ValueError(
+                f"{name} contains {missing} missing value(s) (None, NaN or NA); remove or "
+                "impute them first."
+            )
     if arr.dtype.kind == "f" and not np.all(np.isfinite(arr)):
         bad = int(np.sum(~np.isfinite(arr)))
         raise ValueError(
@@ -113,6 +120,13 @@ def _prepare_probabilities(y_prob: Any) -> np.ndarray:
     return prob
 
 
+def _is_missing(value: Any) -> bool:
+    """None, NaN, pandas ``NA`` and ``NaT`` count as missing (GB-04, NF-02)."""
+    if value is None or type(value).__name__ in ("NAType", "NaTType"):
+        return True
+    return isinstance(value, (float, np.floating)) and bool(np.isnan(value))
+
+
 def _prepare_sensitive_features(features: Any) -> Optional[dict[str, np.ndarray]]:
     if features is None:
         return None
@@ -125,9 +139,7 @@ def _prepare_sensitive_features(features: Any) -> Optional[dict[str, np.ndarray]
     prepared: dict[str, np.ndarray] = {}
     for name, values in features.items():
         arr = _as_1d(values, f"sensitive_features['{name}']").astype(object)
-        missing = np.array(
-            [v is None or (isinstance(v, float) and np.isnan(v)) for v in arr], dtype=bool
-        )
+        missing = np.array([_is_missing(v) for v in arr], dtype=bool)
         if missing.any():
             logger.warning(
                 "sensitive_features['%s'] has %d missing value(s); they form the group '%s'.",

@@ -29,8 +29,8 @@ Checks whether the predicted uncertainty intervals are honest.
 
 ### 3. Uncertainty Informativeness
 Evaluates whether the uncertainty bounds are actually useful. A model can be perfectly calibrated by predicting the marginal distribution every time, but this provides no discriminative value.
-*   **Calibration-Conditioned Sharpness Proxy:** Evaluates how much tighter the model's intervals are compared to a naive climatology baseline (`1 - mean(model_width / climatology_width)`). Crucially, this is evaluated *only* on the levels that pass a strict calibration gate. Over-confident, artificially narrow intervals are rejected and cannot inflate this score.
-*   **Error-Variance Correlation:** A fallback metric that calculates the Spearman/Pearson correlation between the predicted variance and the realized absolute error.
+*   **Calibration-Conditioned Sharpness Proxy:** Evaluates how much tighter the model's intervals are than a naive climatology baseline at each level (width ratio `model_width / climatology_width`). Each level gets a calibration weight: 1 when `|emp - tau| <= 0.05`, falling linearly to 0 at 0.10. The reported `sharpness_skill` is `1 - weighted_mean(width ratio)`; the scored `sharpness_evidence` is the best level's `weight × clip(1 - width ratio, 0, 1)`, which never rises when a level is widened or shifted away from nominal coverage. Narrowing a level trades sharpness against calibration: within the 0.05 tolerance a sharper, slightly over-confident level can raise the sub-score, and beyond it the weight and the miscoverage ceiling take that gain back. This is the resolution/reliability trade-off of the CRPS decomposition.
+*   **Error-Variance Correlation:** Used when `predicted_variance` is supplied (the Uncertainty Informativeness sub-score takes the larger of this and the sharpness evidence); calculates the Spearman/Pearson correlation between the predicted variance and the realized absolute error.
 
 ## API Reference
 

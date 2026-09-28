@@ -1,7 +1,7 @@
 # Why TrustLens?
 
 > [!NOTE]
-> **Methodology version:** this walkthrough describes Trust Score methodology 1.x (TrustLens v0.5.0), which used additive penalties. Methodology 2.0 counts each signal once and uses blockers and caps instead; see [Trust Score Explained](../trust_score_explained.md).
+> **Methodology version:** this walkthrough describes Trust Score methodology 1.x (TrustLens v0.5.0), which used additive penalties. Methodology 2.x counts each signal once and uses blockers, caps and continuous ceilings instead; see [Trust Score Explained](../trust_score_explained.md).
 
 A common question from ML engineers is: *"Why should I use TrustLens instead of standard scikit-learn metrics like Accuracy, ROC-AUC, or Brier Score?"*
 

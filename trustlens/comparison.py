@@ -67,7 +67,10 @@ def compare(
         ``{"recommended": name or None, "ranking": [...], "excluded": [...],
         "warnings": [...]}``. ``ranking`` lists eligible reports by score
         (``name``, ``score``, ``grade``, ``weakest_dimension``); ``excluded``
-        lists the others with the reason. The same summary is printed.
+        lists the others with the reason. ``recommended`` is ``None`` when no
+        report is eligible, or when the eligible reports were scored on
+        different dimensions (their scores are then not comparable). The same
+        summary is printed.
 
     Raises
     ------
@@ -137,13 +140,20 @@ def compare(
         )
 
     dimension_sets = {tuple(sorted(r.trust_score.sub_scores)) for _, r in eligible}
-    if len(dimension_sets) > 1:
+    comparable = len(dimension_sets) <= 1
+    if not comparable:
+        # A model scored without fairness is not better than one whose fairness
+        # was measured and found wanting (R-011): refuse to pick either.
         result["warnings"].append(
             "Eligible reports were scored on different dimensions "
-            f"({[list(s) for s in sorted(dimension_sets)]}); scores are not directly comparable."
+            f"({[list(s) for s in sorted(dimension_sets)]}); scores are not directly comparable, "
+            "so no model is recommended. Re-run analyze() with the same inputs "
+            "(y_prob, sensitive_features, embeddings) for every model."
         )
 
-    if not eligible:
+    if not comparable:
+        print("Recommendation: NONE - the reports were scored on different dimensions.")
+    elif not eligible:
         print("Recommendation: DO NOT DEPLOY any model.")
         print(
             "  * No model has a complete assessment without critical diagnostic blocks"

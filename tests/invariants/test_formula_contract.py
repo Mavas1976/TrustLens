@@ -58,8 +58,8 @@ def _results(ece, auroc, error_rate, gaps=None, oce=0.0, accuracy=None, baseline
 
 
 def test_score_version():
-    assert SCORE_VERSION == "2.1"
-    assert compute_trust_score(_results(0.02, 0.9, 0.1)).score_version == "2.1"
+    assert SCORE_VERSION == "2.2"
+    assert compute_trust_score(_results(0.02, 0.9, 0.1)).score_version == "2.2"
 
 
 @pytest.mark.parametrize("ece", [0.0, 0.03, 0.1, 0.2, 0.3])
@@ -225,10 +225,127 @@ def test_legacy_results_are_flagged():
     del results["calibration"]["overconfidence_error"]
     with pytest.warns(UserWarning, match="before Trust Score methodology 2.0"):
         ts = compute_trust_score(results)
-    assert ts.score_version == "2.1-legacy-input"
+    assert ts.score_version == "2.2-legacy-input"
 
 
 def test_zero_weight_on_every_assessed_dimension_is_rejected():
     """Review F7."""
     with pytest.raises(ValueError, match="weight 0"):
         compute_trust_score(_results(0.02, 0.9, 0.1), weights={"calibration": 0.0, "failure": 0.0})
+
+
+def documented_no_skill_ceiling(accuracy, baseline, auroc, n=None):
+    skill = (accuracy - baseline) / (1 - baseline)
+    if accuracy >= 1:
+        floor = 59.0  # no errors: full detection
+    else:
+        floor = 39.0 if auroc is None else 39 + 20 * min(max((auroc - 0.6) / 0.1, 0), 1)
+    ramp_end = 0.10 if n is None else max(0.10, 10 / (n * (1 - baseline)))
+    return documented_ceiling(ramp_end - skill, 0.0, ramp_end, floor)
+
+
+@pytest.mark.parametrize(
+    ("accuracy", "auroc"),
+    [(0.61, 0.55), (0.63, 0.55), (0.6, 0.65), (0.62, 0.65), (0.64, 0.9), (0.6, 0.9)],
+)
+def test_no_skill_ceiling_follows_the_documented_formula(accuracy, auroc):
+    ts = compute_trust_score(_results(0.02, auroc, 1 - accuracy, accuracy=accuracy, baseline=0.6))
+    limit = documented_no_skill_ceiling(accuracy, 0.6, auroc)
+    assert not ts.is_blocked
+    assert ts.score <= int(np.floor(limit))
+    assert ts.score == min(ts.base_score, int(np.floor(limit))) or any(
+        "Weak dimension" in c for c in ts.caps_applied
+    )
+
+
+def test_no_skill_is_continuous_in_accuracy_and_detection():
+    """NF-01: one extra correct prediction cannot move a model from D to A."""
+    for auroc in (0.5, 0.65, 0.9):
+        scores = [
+            compute_trust_score(
+                _results(0.02, auroc, 1 - float(a), accuracy=float(a), baseline=0.95)
+            ).score
+            for a in np.linspace(0.94, 0.97, 301)
+        ]
+        steps = np.abs(np.diff(scores))
+        assert steps.max() <= 2, (auroc, int(steps.max()))
+    scores = [
+        compute_trust_score(_results(0.02, float(u), 0.05, accuracy=0.95, baseline=0.95)).score
+        for u in np.linspace(0.5, 0.8, 301)
+    ]
+    assert np.abs(np.diff(scores)).max() <= 2
+    assert scores == sorted(scores)
+
+
+def test_weak_dimension_ramp_is_linear_between_30_and_40():
+    """GA-02: a calibration sub-score of 35 limits the score to 79, not 59."""
+    weights = {"calibration": 0.05, "failure": 0.95}
+    ts = compute_trust_score(_results(0.25 * (1 - 0.35), 0.99, 0.01), weights=weights)
+    assert ts.score == min(ts.base_score, int(np.floor(documented_ceiling(5, 0, 10, 59))))
+    scores = [
+        compute_trust_score(_results(float(e), 0.99, 0.01), weights=weights).score
+        for e in np.linspace(0.14, 0.18, 201)
+    ]
+    assert np.abs(np.diff(scores)).max() <= 2
+
+
+@pytest.mark.parametrize(("auroc", "expected"), [(0.55, 39), (0.62, 43), (0.65, 49), (0.75, 59)])
+def test_no_skill_end_point_follows_the_published_auroc_constants(auroc, expected):
+    """NF3-04: end point 39 at AUROC <= 0.6, rising linearly to 59 at 0.7."""
+    ts = compute_trust_score(_results(0.02, auroc, 0.05, accuracy=0.95, baseline=0.95))
+    assert ts.base_score > 59
+    assert ts.score == expected
+    assert ts.is_blocked == (auroc < 0.6)
+
+
+@pytest.mark.parametrize(
+    ("n", "baseline", "correct"),
+    [
+        (2000, 0.99, 1),
+        (2000, 0.99, 3),
+        (200, 0.9, 1),
+        (60, 0.9, 2),
+        (200, 0.995, 1),
+        (500, 0.996, 2),
+    ],
+)
+def test_no_skill_ramp_spans_at_least_ten_minority_samples(n, baseline, correct):
+    """NF3-01: with few minority samples one correct prediction is a small step."""
+    accuracy = baseline + correct / n
+    results = _results(0.02, 0.5, 1 - accuracy, accuracy=accuracy, baseline=baseline)
+    results["failure"]["n_samples"] = n
+    ts = compute_trust_score(results)
+    limit = documented_no_skill_ceiling(accuracy, baseline, 0.5, n=n)
+    assert ts.score == min(ts.base_score, int(np.floor(limit)))
+    # One more correct prediction moves the ceiling by at most 61/10 (NF4-02).
+    previous = documented_no_skill_ceiling(accuracy - 1 / n, baseline, 0.5, n=n)
+    assert limit - previous <= 61 / 10 + 1e-9 or accuracy >= 1
+
+
+def test_legacy_results_take_the_sample_count_from_class_counts():
+    """NF4-03: without n_samples the ramp still spans ten minority samples."""
+    results = _results(0.02, 0.9, 1 - 0.62, accuracy=0.62, baseline=0.6)
+    results["bias"] = {"class_imbalance": {"class_counts": {0: 60, 1: 40}}}
+    ts = compute_trust_score(results)
+    limit = documented_no_skill_ceiling(0.62, 0.6, 0.9, n=100)  # n = sum of the counts
+    assert ts.base_score > limit
+    assert ts.score == int(np.floor(limit))
+
+
+def test_perfect_model_is_never_below_the_same_model_with_a_miss():
+    """NF5-02: with few minority samples, one more error never raises the score."""
+    for n, n_minority in ((500, 1), (500, 2), (1000, 3), (2000, 5), (2000, 9)):
+        baseline = 1 - n_minority / n
+        scores = []
+        for missed in range(n_minority + 1):
+            accuracy = 1 - missed / n
+            results = _results(
+                0.02, None if missed == 0 else 1.0, missed / n, accuracy=accuracy, baseline=baseline
+            )
+            results["failure"]["n_samples"] = n
+            ts = compute_trust_score(results)
+            scores.append(ts.score)
+            if missed == 0 and n_minority < 10:
+                # NF6-04: the limit names the thin evidence, not "barely beats".
+                assert any(f"Only {n_minority} non-majority" in c for c in ts.caps_applied)
+        assert scores == sorted(scores, reverse=True), (n, n_minority, scores)

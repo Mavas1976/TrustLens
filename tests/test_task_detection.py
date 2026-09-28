@@ -30,6 +30,7 @@ def test_auto_detection_from_target(y, expected):
         np.arange(1, 51).repeat(2),  # 50 contiguous labels ... or a count 1..50
         rng.poisson(20, 5000),  # Poisson counts: contiguous, few distinct per sample
         rng.integers(0, 60, size=10_000) * 7,  # few distinct values per sample
+        np.delete(np.arange(25), 7).repeat(4),  # 25 labels, one absent (NF-05)
     ],
 )
 def test_ambiguous_integer_targets_require_explicit_task(y):

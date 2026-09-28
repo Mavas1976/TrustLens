@@ -161,6 +161,13 @@ def _warn_on_low_support(subgroups: dict[str, Any]) -> None:
 def _accuracy_and_baseline(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
     """Accuracy and the majority-class baseline it must beat to show skill."""
     _, counts = np.unique(y_true, return_counts=True)
+    if len(counts) == 1:
+        # Any model that predicts the only class "matches" the baseline here, so
+        # the no-skill check cannot run (NF3-05).
+        logger.warning(
+            "y_true contains a single class: accuracy cannot show skill and the "
+            "no-skill check is skipped. Evaluate on data with at least two classes."
+        )
     return {
         "accuracy": round(float(np.mean(y_true == y_pred)), 6),
         "baseline_accuracy": round(float(counts.max() / counts.sum()), 6),

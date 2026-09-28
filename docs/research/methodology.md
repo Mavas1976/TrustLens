@@ -1,7 +1,7 @@
 # Methodology & Threats to Validity
 
 > [!NOTE]
-> **Methodology version:** the results on this page were produced with Trust Score methodology 1.x (TrustLens v0.5.0) and have not been re-run under methodology 2.0. Scores and grades differ under 2.0; see [Trust Score Explained](../trust_score_explained.md) and [ADR-001](../adr/ADR-001-trust-score-methodology.md).
+> **Methodology version:** the results on this page were produced with Trust Score methodology 1.x (TrustLens v0.5.0) and have not been re-run under methodology 2.x. Scores and grades differ under 2.x; see [Trust Score Explained](../trust_score_explained.md) and [ADR-001](../adr/ADR-001-trust-score-methodology.md).
 
 This document outlines the scientific methodology used to validate the TrustLens framework in our official benchmarks and explicitly details the limitations and threats to validity of our findings.
 

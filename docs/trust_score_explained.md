@@ -16,8 +16,8 @@ probability of failure, a guarantee of safe behaviour, a certification or a
 regulatory assessment. Use it to rank candidates and to gate releases, and use
 the sub-scores and metric pages to decide what to fix.
 
-This page describes **methodology 2.1** (`TrustScoreResult.score_version`),
-introduced after the 2026-09 audit. The design decisions and their rationale
+This page describes **methodology 2.2** (`TrustScoreResult.score_version`),
+introduced after the 2026-09 audit and two independent verifications. The design decisions and their rationale
 are recorded in [ADR-001](adr/ADR-001-trust-score-methodology.md).
 
 ## Inputs Used
@@ -31,7 +31,7 @@ are recorded in [ADR-001](adr/ADR-001-trust-score-methodology.md).
 **Regression:**
 - `accuracy`: skill score (R²), docked for heavy-tailed errors
 - `interval_calibration`: single-level PICP or multi-level ICE
-- `uncertainty_informativeness`: sharpness proxy or error-variance correlation
+- `uncertainty_informativeness`: the larger of the calibration-weighted sharpness evidence (intervals) and the error-variance correlation (predicted variance)
 
 ## Scoring Workflow (classification)
 
@@ -72,7 +72,7 @@ must use these keys and be non-negative.
 ### Blockers (grade D, score ≤ 39)
 
 **Classification:**
-- No predictive skill: accuracy does not beat the majority-class baseline *and* confidence carries little information about errors (error-detection AUROC below 0.6, or no probabilities). Not applied when `y_true` has a single class. If confidence does separate errors (for example a calibrated rare-event model whose scores never cross 0.5), the result is capped at C with a "review the decision threshold" note instead.
+- No predictive skill: accuracy does not beat the majority-class baseline *and* confidence carries little information about errors (error-detection AUROC below 0.6, or no probabilities). Not applied when `y_true` has a single class. If confidence does separate errors (for example a calibrated rare-event model whose scores never cross 0.5), the model is limited instead of blocked, with a "review the decision threshold" note (see the no-skill ceiling below).
 - Overconfidence: overconfidence error (the part of top-label ECE where confidence exceeds accuracy) above 0.10, on at least 100 samples. Underconfidence lowers the calibration sub-score but does not block.
 - Severe fairness violation: a fairness gap above 0.15.
 
@@ -84,6 +84,25 @@ crosses its threshold:
 |---|---|---|
 | Overconfidence error | 0.05 | 0.10 |
 | Largest fairness gap | 0.10 | 0.15 |
+| Normalised skill `(accuracy − baseline) / (1 − baseline)` | 0.10 | 0 |
+
+The no-skill ceiling ends at 39 only when confidence is uninformative. Its end
+point rises linearly from 39 (error-detection AUROC 0.6 or lower, or no
+probabilities) to 59 (AUROC 0.7 or higher): a model whose decisions do not beat
+the baseline but whose confidence ranks errors is limited to grade C, not
+blocked. The skill ramp spans at least 10 correctly predicted non-majority
+samples (its end is `max(0.10, 10 / n_non_majority)`), so one more correct
+prediction moves the ceiling by at most about 6 points, never from D to A.
+One exception: below ten non-majority samples, removing the *last* error also
+raises the end point to 59 (a model without errors counts as detecting all of
+them), so that step can be up to about 24 points (for example 39/D to 63/B
+with one non-majority sample); the result is still at most grade B.
+With fewer than 10 non-majority samples in the evaluation set even a perfect
+model cannot lift this ceiling completely: there is too little evidence of
+skill. A model without errors counts as fully detecting its errors (end point
+59), so the limit for a perfect model is `59 + 41 × n_non_majority / 10`: 63
+with one non-majority sample, 79 with five, no limit from ten. Results that
+carry neither `n_samples` nor class counts use the 0.10 ramp.
 
 Below 100 samples the overconfidence estimate is too noisy to block on (about
 20% false alarms at n = 30 for a perfectly calibrated model), so its ceiling
@@ -93,10 +112,30 @@ stops at 59 (grade C) instead of blocking.
 - Negative skill (worse than predicting the mean).
 - Severe interval miscoverage (coverage more than 0.10 below nominal).
 
+Both regression blockers have ceiling ramps as well: the ceiling falls from 100
+to 39 as the skill (R²) drops from 0.10 to 0, and as the coverage shortfall
+grows from 0.05 to 0.10. Uncertainty informativeness from interval mappings is
+the best level's calibration weight (1 within 0.05 of nominal coverage, 0 at
+0.10) times its sharpness against climatology; with `predicted_variance` the
+sub-score is the larger of that and the error-variance correlation score.
+Widening a level or shifting it away from nominal coverage never raises the
+score. Narrowing a level is a trade-off: within the 0.05 tolerance a sharper,
+slightly over-confident level can raise informativeness by a few points.
+Intervals from a multi-level mapping (including a single level) that are all
+unusable score 0.
+
 ### Caps and ceilings (grade C, score ≤ 59)
 
-- **Incomplete assessment** (`is_partial`): calibration or failure was not assessed, for example without `y_prob` or with a `modules=` subset.
+- **Incomplete assessment** (`is_partial`): calibration or failure was not assessed, for example without `y_prob` or with a `modules=` subset, or the equalized-odds computation failed (fairness is then not assessed rather than scored from the subgroup gap alone; `missing_dimensions` lists `bias (equalized odds failed)`).
+- **Too few samples**: fewer than 30 samples.
+- **Fairness requested but not assessable**: sensitive features were supplied but no two groups have 30 or more samples; `missing_dimensions` lists `bias (no two groups large enough to compare)`.
 - **Weak dimension**: an assessed sub-score below 40 lowers the ceiling linearly from 100 (at 40) to 59 (at 30 and below).
+
+The sample-count rules (30 samples for a passing grade, 100 for the
+overconfidence blocker, 30 per fairness group) are deliberate steps, not
+ramps: below them the evidence is too thin to rely on, and adding one sample
+can move the score across the step. When `y_true` contains a single class the
+no-skill check cannot run; a warning is logged.
 
 Top-label measures (multiclass ECE, overconfidence error, error-detection
 AUROC) judge the probabilities' own prediction: a sample counts as correct
@@ -137,7 +176,7 @@ data splits and seeds). `tests/reference/test_published_table.py` recomputes
 every value in the current-methodology column from this page, so the table
 cannot drift from the code:
 
-| Model | v0.5.0 | current (2.1) |
+| Model | v0.5.0 | current (2.2) |
 |---|---|---|
 | breast_cancer · LogReg | 68/D blocked | 93/A |
 | breast_cancer · RandomForest | 70/B | 87/A |
@@ -157,11 +196,14 @@ The main causes: the 1.x failure sub-score could not exceed 60 for binary
 models, ECE above 0.10 blocked even underconfident models, and signals were
 counted up to three times (sub-score, penalty and blocker). Methodology 2.1
 additionally weights undetectable errors by how often they occur and replaces
-the jumps at blocker thresholds with continuous ceilings.
+the jumps at blocker thresholds with continuous ceilings. Methodology 2.2 adds
+the same ceilings before the no-skill blocker and the regression blockers; none
+of the reference models above changes.
 
 ## How to Use This in Practice
 
 - Use the score for ranking and release gating, together with `blockers`, `caps_applied` and `is_partial`.
+- `compare()` recommends a model only among complete, unblocked reports that were scored on the same dimensions; if one report has a fairness (or representation) dimension and another does not, it recommends none.
 - Use sub-scores to identify which dimension needs work; the weakest dimension is named in explanations and in `compare()`.
 - Use full metric pages for root-cause analysis.
 
