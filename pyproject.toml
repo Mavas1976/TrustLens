@@ -179,3 +179,14 @@ warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
 follow_imports = "silent"
+
+# Strictness ratchet (audit phase 3): modules listed here must pass
+# `mypy --strict`. Add modules as they are cleaned up; never remove one.
+[[tool.mypy.overrides]]
+module = [
+    "trustlens._palette",
+    "trustlens._report.base",
+    "trustlens.core.inputs",
+    "trustlens.results_schema",
+]
+strict = true
