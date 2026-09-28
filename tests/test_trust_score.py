@@ -124,10 +124,12 @@ class TestCalibrationScore:
         score = _calibration_score(data)
         assert 0.0 <= score <= 100.0
 
-    def test_missing_keys_uses_defaults(self):
-        score = _calibration_score({})
-        # Defaults: BS=0.5, ECE=0.5 → composite=1.25 → clip(1.0) → score=0.0
-        assert score == pytest.approx(0.0, abs=1e-6)
+    def test_missing_ece_means_not_assessed(self):
+        # Methodology 2.0 (TL-02): no ECE means calibration was not assessed;
+        # it is dropped from the weighting instead of scored from defaults.
+        result = compute_trust_score({"calibration": {"brier_score": 0.1}})
+        assert "calibration" not in result.sub_scores
+        assert "calibration" in result.missing_dimensions
 
 
 class TestFailureScore:

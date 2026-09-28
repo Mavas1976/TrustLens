@@ -5,6 +5,7 @@
         "brier_score": 0.0836,
         "ece": 0.09399999999999999,
         "mce": 0.4000000000000001,
+        "overconfidence_error": 0.005,
         "reliability_curve": [
           [
             0.043478260869565216,
@@ -141,7 +142,10 @@
           "n_correct": 89,
           "n_incorrect": 11
         },
-        "n_classes": 2
+        "confidence_auroc": 0.807967,
+        "n_classes": 2,
+        "accuracy": 0.89,
+        "baseline_accuracy": 0.5
       },
       "bias": {
         "class_imbalance": {
@@ -249,19 +253,20 @@
       }
     },
     "trust_score": {
-      "score": 58,
-      "grade": "C",
+      "score": 65,
+      "grade": "B",
       "sub_scores": {
-        "calibration": 77.5,
-        "failure": 53.3,
-        "bias": 95.6,
+        "calibration": 62.4,
+        "failure": 67.1,
+        "bias": 70.8,
         "representation": 50.1
       },
-      "penalties": {
-        "Failure": 2.2,
-        "Calibration": 6.6,
-        "Fairness": 5.7
-      }
+      "penalties": {},
+      "base_score": 65,
+      "is_blocked": false,
+      "blockers": [],
+      "caps_applied": [],
+      "score_version": "2.0"
     },
     "metadata": {
       "n_samples": 100,
@@ -274,6 +279,7 @@
         "brier_score": 0.12132141321734885,
         "ece": 0.07959529043880662,
         "mce": 0.4564137329001824,
+        "overconfidence_error": 0.0229415014,
         "reliability_curve": [
           [
             0.0,
@@ -420,7 +426,10 @@
           "n_correct": 82,
           "n_incorrect": 18
         },
-        "n_classes": 2
+        "confidence_auroc": 0.811653,
+        "n_classes": 2,
+        "accuracy": 0.82,
+        "baseline_accuracy": 0.5
       },
       "bias": {
         "class_imbalance": {
@@ -528,19 +537,24 @@
       }
     },
     "trust_score": {
-      "score": 43,
+      "score": 39,
       "grade": "D",
       "sub_scores": {
-        "calibration": 75.9,
-        "failure": 41.8,
-        "bias": 96.1,
+        "calibration": 68.2,
+        "failure": 66.3,
+        "bias": 33.3,
         "representation": 50.1
       },
-      "penalties": {
-        "Failure": 6.1,
-        "Calibration": 4.4,
-        "Fairness": 15.0
-      }
+      "penalties": {},
+      "base_score": 57,
+      "is_blocked": true,
+      "blockers": [
+        "Blocked by severe fairness violation (largest gap 0.200 > 0.15)"
+      ],
+      "caps_applied": [
+        "Weak dimension: bias (capped at grade C)"
+      ],
+      "score_version": "2.0"
     },
     "metadata": {
       "n_samples": 100,

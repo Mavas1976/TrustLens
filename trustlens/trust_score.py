@@ -20,52 +20,43 @@ Why a single score?
 Practitioners face "metric overload": ECE, Brier Score, silhouette scores,
 confidence gaps — great individually but hard to act on as a whole.
 
-The Trust Score distils all TrustLens analysis into one instantly readable
-number:
+The Trust Score distils the TrustLens analysis into one number and grade. It
+is a heuristic summary of diagnostic evidence, not a probability of failure,
+a certification or a regulatory assessment (ADR-001).
 
- * **< 40** — Serious issues. Do not deploy.
- * **40–60** — Moderate trust. Investigate flagged dimensions.
- * **60–80** — Good. Minor improvements recommended.
- * **80–100** — High trust. Model is production-ready.
+ * **80–100 (A)** — High trust. No critical issues detected.
+ * **60–79 (B)**  — Good. Minor issues to address.
+ * **40–59 (C)**  — Moderate. Investigate flagged dimensions.
+ * **0–39 (D)**   — Low. Serious issues; do not deploy.
+ * **N/A**        — No dimension could be scored (insufficient evidence).
 
-Formula
--------
-The Trust Score is a weighted sum of four normalized sub-scores (0–100 each):
+Formula (methodology 2.0)
+-------------------------
+1. Score every dimension that was assessed (0–100):
 
- TrustScore = w_cal * CalibrationScore
-       + w_fail * FailureScore
-       + w_bias * BiasScore
-       + w_rep * RepresentationScore
+ * CalibrationScore    = 100 × clip(1 − ECE / 0.25, 0, 1)
+ * FailureScore        = 100 × (0.8 × clip(2 × AUROC − 1, 0, 1) + 0.2 × accuracy)
+   AUROC = error-detection AUROC of top-label confidence (correct vs wrong);
+   a report without errors uses 1 for the detection term.
+ * BiasScore           = 100 × clip(1 − max_gap / 0.30, 0, 1), only when
+   sensitive features were supplied; max_gap is the largest defined subgroup
+   accuracy gap or equalized-odds TPR/FPR gap over groups with enough support.
+ * RepresentationScore = 100 × clip(0.5 + 0.5 × silhouette, 0, 1), only with
+   embeddings.
 
-Default weights (tuned to reflect deployment risk):
- w_cal = 0.35  (calibration matters most — drives overconfidence risk)
- w_fail = 0.30  (failure patterns drive safety risk)
- w_bias = 0.25  (bias drives fairness/regulatory risk)
- w_rep = 0.10  (representation is a bonus signal; not always available)
+2. Weighted mean over the assessed dimensions. Default weights calibration 0.35,
+   failure 0.30, bias 0.25, representation 0.10, renormalised over the
+   dimensions present. This is ``base_score``.
 
-If a dimension is unavailable (e.g., no embeddings → no representation score),
-its weight is redistributed proportionally to the other available dimensions.
+3. Blockers (grade D, score capped at 39): accuracy not above the
+   majority-class baseline; overconfidence error > 0.10; a fairness gap > 0.15.
 
-Sub-score Normalization
------------------------
-All sub-scores are normalized to [0, 100]:
+4. Caps (grade C, score capped at 59): calibration or failure not assessed
+   (``is_partial``); any assessed sub-score below 40.
 
- * CalibrationScore = 100 × (1 - clip(0.5×BS + 0.5×ECE, 0, 1))
-   - Brier Score and ECE are both in [0, 1]; lower is better.
-   - Perfect calibration → 100. Worst case (BS=1, ECE=1) → 0.
-
- * FailureScore = 100 × clip(confidence_gap, 0, 1)
-   - Confidence gap in [0, 1] (clipped); higher is better.
-   - A model that is highly confident *only* when correct → 100.
-
- * BiasScore = 100 × (1 - clip(bias_penalty, 0, 1))
-   - bias_penalty = 0.5 × clip(imbalance_ratio / 20, 0, 1)
-           + 0.5 × clip(subgroup_gap, 0, 1)
-   - Perfectly balanced dataset, zero subgroup gap → 100.
-
- * RepresentationScore = 100 × clip(0.5 + 0.5 × silhouette, 0, 1)
-   - Silhouette ∈ [-1, 1]; mapped to [0, 100].
-   - Perfect separation → 100. Total overlap → 0.
+Every signal is counted once. There are no additive penalties
+(``penalties_applied`` is always empty since 2.0). The grade always matches the
+score band.
 
 References
 ----------
@@ -87,6 +78,11 @@ from trustlens.visualization.style import BRAND_COLORS
 # Constants
 # ---------------------------------------------------------------------------
 
+SCORE_VERSION = "2.0"
+
+# Grade reported when no dimension could be scored (insufficient evidence).
+NOT_ASSESSED_GRADE = "N/A"
+
 _DEFAULT_WEIGHTS: dict[str, float] = {
     "calibration": 0.35,
     "failure": 0.30,
@@ -95,7 +91,7 @@ _DEFAULT_WEIGHTS: dict[str, float] = {
 }
 
 _GRADE_THRESHOLDS = [
-    (80, "A", "High Trust - production-ready"),
+    (80, "A", "High Trust - no critical issues detected"),
     (60, "B", "Good Trust - minor issues to address"),
     (40, "C", "Moderate Trust - investigate flagged dimensions"),
     (0, "D", "Low Trust - serious issues, do not deploy"),
@@ -104,10 +100,19 @@ _GRADE_THRESHOLDS = [
 # Dimensions without which a classification verdict is incomplete (ADR-001).
 _CORE_DIMENSIONS = ("calibration", "failure")
 
-_MAX_PENALTY_FAILURE = 20.0
-_MAX_PENALTY_CALIBRATION = 15.0
-_MAX_PENALTY_FAIRNESS = 15.0
-_MAX_TOTAL_PENALTY = 35.0
+# Sub-score ramps: the metric value at which a sub-score reaches 0.
+_CAL_ECE_AT_ZERO = 0.25
+_BIAS_GAP_AT_ZERO = 0.30
+
+# Blockers (overrides; ADR-001 §3). Each fires on a signal that the weighted
+# score could otherwise average away.
+_BLOCK_OVERCONFIDENCE = 0.10  # overconfidence error (top-label)
+_BLOCK_FAIRNESS_GAP = 0.15  # equals the "severe" level of the fairness metrics
+
+# Score caps keep the number consistent with the grade band.
+_BLOCKED_SCORE_CAP = 39  # grade D
+_CAPPED_SCORE_CAP = 59  # grade C
+_WEAK_DIMENSION = 40.0  # an assessed sub-score below this caps the grade at C
 
 
 # ---------------------------------------------------------------------------
@@ -125,9 +130,11 @@ def _is_assessed(dimension: str, data: object) -> bool:
     if not isinstance(data, dict) or data.get("status") in ("skipped", "degraded"):
         return False
     if dimension == "calibration":
-        return data.get("brier_score") is not None and data.get("ece") is not None
+        return data.get("ece") is not None
     if dimension == "failure":
         return bool(data.get("confidence_gap", {}).get("status") != "skipped")
+    if dimension == "bias":
+        return bool(_fairness_gaps(data))
     return True
 
 
@@ -135,74 +142,79 @@ def _calibration_score(cal_data: dict) -> float:
     """
     Compute calibration sub-score (0–100).
 
-    CalibScore = 100 × (1 − clip(BS + 1.5×ECE, 0, 1))
+    CalibrationScore = 100 × clip(1 − ECE / 0.25, 0, 1)
+
+    ECE is scale-free across the number of classes (top-label ECE for
+    multiclass), unlike the multiclass Brier score, which ranges over [0, 2] and
+    mixes accuracy into calibration (TL-05). Brier is still reported.
     """
-    bs = float(cal_data.get("brier_score", 0.5))
-    ece = float(cal_data.get("ece", 0.5))
-    composite = bs + 1.5 * ece
-    return 100.0 * (1.0 - float(np.clip(composite, 0.0, 1.0)))
+    ece = float(cal_data["ece"])
+    return 100.0 * float(np.clip(1.0 - ece / _CAL_ECE_AT_ZERO, 0.0, 1.0))
 
 
 def _failure_score(fail_data: dict) -> float:
     """
     Compute failure sub-score (0–100).
 
-    FailScore = 100 × (0.8 × GapScore + 0.2 × (1 − error_rate))
-    GapScore  = clip(confidence_gap / (1 − 1/K), 0, 1)
+    FailureScore = 100 × (0.8 × DetectionScore + 0.2 × accuracy)
+    DetectionScore = clip(2 × AUROC − 1, 0, 1)
 
-    The confidence gap (mean confidence when correct minus mean confidence when
-    wrong) is normalised by its attainable maximum ``1 − 1/K``: top-label
-    confidence can never fall below ``1/K``, so for a binary model the raw gap
-    cannot exceed 0.5. A model without any errors has no "wrong" group; it gets
-    the full gap score instead of the undefined gap of 0.0 (ADR-001, TL-01).
+    AUROC is the error-detection AUROC: how well top-label confidence ranks
+    correct predictions above wrong ones (0.5 = no information, 1.0 = perfect).
+    A report without any error has DetectionScore 1. Reports saved before v0.6
+    lack the AUROC and fall back to the confidence gap normalised by its
+    attainable maximum ``1 − 1/K``.
     """
-    gap_data = fail_data.get("confidence_gap", {})
-    gap = float(gap_data.get("gap", 0.0))
-
     misc = fail_data.get("misclassification_summary", {})
-    overall = misc.get("__overall__", {})
-    error_rate = float(overall.get("overall_error_rate", 0.5))
+    error_rate = float(misc.get("__overall__", {}).get("overall_error_rate", 0.5))
 
-    n_classes = fail_data.get("n_classes")
-    if n_classes is None:
-        # Reports saved before v0.5.1 lack n_classes; count the per-class entries.
-        n_classes = sum(1 for k in misc if not str(k).startswith("__"))
-    n_classes = max(int(n_classes), 2)
-    max_gap = 1.0 - 1.0 / n_classes
-
+    auroc = fail_data.get("confidence_auroc")
     if error_rate <= 0.0:
-        gap_score = 1.0
+        detection = 1.0
+    elif auroc is not None:
+        detection = float(np.clip(2.0 * float(auroc) - 1.0, 0.0, 1.0))
     else:
-        gap_score = float(np.clip(gap / max_gap, 0.0, 1.0))
-    acc_score = 1.0 - float(np.clip(error_rate, 0.0, 1.0))
-    score = 0.8 * gap_score + 0.2 * acc_score
-    return 100.0 * float(np.clip(score, 0.0, 1.0))
+        gap = float(fail_data.get("confidence_gap", {}).get("gap", 0.0))
+        n_classes = fail_data.get("n_classes")
+        if n_classes is None:
+            n_classes = sum(1 for k in misc if not str(k).startswith("__"))
+        max_gap = 1.0 - 1.0 / max(int(n_classes), 2)
+        detection = float(np.clip(gap / max_gap, 0.0, 1.0))
+
+    accuracy = 1.0 - float(np.clip(error_rate, 0.0, 1.0))
+    return 100.0 * float(np.clip(0.8 * detection + 0.2 * accuracy, 0.0, 1.0))
+
+
+def _fairness_gaps(bias_data: dict) -> list[float]:
+    """All defined fairness gaps: subgroup accuracy gaps and equalized-odds TPR/FPR gaps."""
+    gaps: list[float] = []
+    for feat_data in bias_data.get("subgroup_performance", {}).values():
+        if isinstance(feat_data, dict):
+            gap = feat_data.get("__summary__", {}).get("performance_gap")
+            if gap is not None:
+                gaps.append(float(gap))
+    for feat_data in bias_data.get("equalized_odds", {}).values():
+        if isinstance(feat_data, dict):
+            summary = feat_data.get("__summary__", {})
+            gaps.extend(
+                float(summary[k]) for k in ("tpr_gap", "fpr_gap") if summary.get(k) is not None
+            )
+    return gaps
 
 
 def _bias_score(bias_data: dict) -> float:
     """
-    Compute bias sub-score (0–100).
+    Compute bias (fairness) sub-score (0–100).
 
-    BiasScore = 100 × (1 − clip(bias_penalty, 0, 1))
-    bias_penalty = 0.5 × clip(imbalance_ratio/20, 0, 1)
-           + 0.5 × max_subgroup_performance_gap
+    BiasScore = 100 × clip(1 − max_gap / 0.30, 0, 1)
+
+    ``max_gap`` is the largest defined gap across sensitive features: subgroup
+    accuracy gap, equalized-odds TPR gap and FPR gap. The dimension is only
+    scored when sensitive features were supplied (TL-15); class imbalance is a
+    property of the data and is reported, not scored.
     """
-    imbalance = bias_data.get("class_imbalance", {})
-    ratio = float(imbalance.get("imbalance_ratio", 1.0))
-    imbalance_penalty = float(np.clip((ratio - 1.0) / 19.0, 0.0, 1.0))
-
-    # Subgroup performance gap (worst across all sensitive features)
-    max_gap = 0.0
-    subgroup = bias_data.get("subgroup_performance", {})
-    for feat_data in subgroup.values():
-        summary = feat_data.get("__summary__", {})
-        gap = float(summary.get("performance_gap") or 0.0)
-        max_gap = max(max_gap, gap)
-
-    subgroup_penalty = float(np.clip(max_gap, 0.0, 1.0))
-
-    bias_penalty = 0.5 * imbalance_penalty + 0.5 * subgroup_penalty
-    return 100.0 * (1.0 - float(np.clip(bias_penalty, 0.0, 1.0)))
+    max_gap = max(_fairness_gaps(bias_data), default=0.0)
+    return 100.0 * float(np.clip(1.0 - max_gap / _BIAS_GAP_AT_ZERO, 0.0, 1.0))
 
 
 def _representation_score(rep_data: dict) -> float:
@@ -233,7 +245,8 @@ class TrustScoreResult:
     score : int
       Overall Trust Score in [0, 100].
     grade : str
-      Letter grade: A / B / C / D.
+      Letter grade: A / B / C / D, or ``"N/A"`` when no dimension could be
+      scored (insufficient evidence; ``score`` is then 0 and meaningless).
     verdict : str
       Plain-English deployment recommendation.
     sub_scores : dict
@@ -263,6 +276,17 @@ class TrustScoreResult:
       assessment is capped at grade C (ADR-001).
     missing_dimensions : list[str]
       The core dimensions that were not assessed.
+    blockers : list[str]
+      Critical conditions that forced grade D (score capped at 39).
+    caps_applied : list[str]
+      Conditions that capped the result at grade C (score capped at 59).
+    base_score : int
+      Weighted score of the assessed dimensions before blockers and caps.
+    penalties_applied : dict
+      Deprecated since methodology 2.0 and always empty: signals are counted
+      once, in their sub-score. Kept for backward compatibility.
+    score_version : str
+      Trust Score methodology version (see ADR-001).
     """
 
     score: int
@@ -278,6 +302,9 @@ class TrustScoreResult:
     informativeness_status: str | None = None
     is_partial: bool = False
     missing_dimensions: list[str] = field(default_factory=list)
+    blockers: list[str] = field(default_factory=list)
+    caps_applied: list[str] = field(default_factory=list)
+    score_version: str = SCORE_VERSION
 
     def __str__(self) -> str:
         lines = [
@@ -365,213 +392,173 @@ def _score_bar(score: float, width: int = 12) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _redistribute(weights: dict[str, float], present: list[str]) -> dict[str, float]:
+    """Renormalise the weights of the dimensions that were actually scored."""
+    total = sum(weights[d] for d in present)
+    return {d: weights[d] / total for d in present} if total > 0 else {}
+
+
+def _finalize(
+    raw_score: float,
+    blockers: list[str],
+    caps: list[str],
+) -> tuple[int, int, str, str]:
+    """Turn the weighted score, blockers and caps into (score, base_score, grade, verdict).
+
+    The reported score always lies inside its grade band: a blocked result is
+    capped at 39 (grade D) and a capped result at 59 (grade C). ``base_score``
+    keeps the weighted evidence score before any cap.
+    """
+    base_score = int(round(float(np.clip(raw_score, 0.0, 100.0))))
+    score = base_score
+    if blockers:
+        score = min(score, _BLOCKED_SCORE_CAP)
+    elif caps:
+        score = min(score, _CAPPED_SCORE_CAP)
+
+    grade, verdict = "D", _GRADE_THRESHOLDS[-1][2]
+    for threshold, g, v in _GRADE_THRESHOLDS:
+        if score >= threshold:
+            grade, verdict = g, v
+            break
+    if blockers:
+        verdict = f"Low Trust - {blockers[0]}"
+    elif caps:
+        verdict = f"{verdict.split(' - ')[0]} - {caps[0]}"
+    return score, base_score, grade, verdict
+
+
+def _validated_weights(weights: dict[str, float] | None, defaults: dict[str, float]) -> dict:
+    """Merge custom weights over the defaults; reject unknown keys and negative values."""
+    w = dict(defaults)
+    if weights:
+        unknown = sorted(set(weights) - set(defaults))
+        if unknown:
+            raise ValueError(f"Unknown weight key(s) {unknown}. Valid keys: {sorted(defaults)}.")
+        negative = sorted(k for k, v in weights.items() if v < 0)
+        if negative:
+            raise ValueError(f"Weights must be non-negative; got negative values for {negative}.")
+        w.update(weights)
+    if sum(w.values()) <= 0:
+        raise ValueError("At least one weight must be positive.")
+    return w
+
+
 def compute_trust_score(
     results: dict,
     weights: dict[str, float] | None = None,
 ) -> TrustScoreResult:
     """
-    Compute the overall Trust Score from a TrustReport's results dict.
+    Compute the classification Trust Score (methodology v2.0) from a results dict.
 
     Parameters
     ----------
     results : dict
       The ``TrustReport.results`` dictionary.
     weights : dict, optional
-      Custom dimension weights. Keys: ``"calibration"``, ``"failure"``,
-      ``"bias"``, ``"representation"``. Values must sum to 1.0.
-      If None, uses default weights.
+      Custom dimension weights for ``"calibration"``, ``"failure"``, ``"bias"``
+      and ``"representation"``; merged over the defaults and renormalised over
+      the dimensions that were scored. Unknown keys and negative values raise
+      ``ValueError``.
 
     Returns
     -------
     TrustScoreResult
       Structured score result with per-dimension breakdown.
 
+    Notes
+    -----
+    See the module docstring and ADR-001 for the formulas. In short: the
+    weighted mean of the assessed sub-scores, then blockers (grade D, score
+    ≤ 39) and caps (grade C, score ≤ 59). Signals are counted once; there are no
+    additive penalties.
+
     Examples
     --------
     >>> from trustlens.trust_score import compute_trust_score
     >>> result = compute_trust_score(report.results)
-    >>> print(result)
-    >>> print(result.score)  # e.g. 74
-    >>> print(result.grade)  # e.g. 'B'
+    >>> print(result.score, result.grade)  # e.g. 74 'B'
     """
-    w = dict(_DEFAULT_WEIGHTS)
-    if weights:
-        w.update(weights)
+    w = _validated_weights(weights, _DEFAULT_WEIGHTS)
 
-    # ------------------------------------------------------------------
-    # 1. Compute available sub-scores
-    # ------------------------------------------------------------------
-    sub_scores: dict[str, float] = {}
-
-    if _is_assessed("calibration", results.get("calibration")):
-        sub_scores["calibration"] = _calibration_score(results["calibration"])
-
-    if _is_assessed("failure", results.get("failure")):
-        sub_scores["failure"] = _failure_score(results["failure"])
-
-    if _is_assessed("bias", results.get("bias")):
-        sub_scores["bias"] = _bias_score(results["bias"])
-
-    if _is_assessed("representation", results.get("representation")):
-        sub_scores["representation"] = _representation_score(results["representation"])
-
+    # 1. Sub-scores for the dimensions that were actually assessed
+    scorers = {
+        "calibration": _calibration_score,
+        "failure": _failure_score,
+        "bias": _bias_score,
+        "representation": _representation_score,
+    }
+    sub_scores = {
+        dim: fn(results[dim]) for dim, fn in scorers.items() if _is_assessed(dim, results.get(dim))
+    }
     missing_dimensions = [d for d in _CORE_DIMENSIONS if d not in sub_scores]
     is_partial = bool(missing_dimensions)
 
-    # ------------------------------------------------------------------
-    # 2. Redistribute weights for missing dimensions
-    # ------------------------------------------------------------------
-    active_dims = [d for d in w if d in sub_scores]
-    total_active_weight = sum(w[d] for d in active_dims)
+    # 2. Weighted mean over the assessed dimensions
+    weights_used = _redistribute(w, [d for d in w if d in sub_scores])
+    raw_score = sum(sub_scores[d] * weights_used[d] for d in weights_used)
 
-    weights_used: dict[str, float] = {}
-    if total_active_weight > 0:
-        for dim in active_dims:
-            weights_used[dim] = w[dim] / total_active_weight
-    else:
-        # Fallback: equal weights
-        for dim in active_dims:
-            weights_used[dim] = 1.0 / len(active_dims) if active_dims else 0.0
-
-    # ------------------------------------------------------------------
-    # 3. Weighted sum and Weak-Dimension Penalties → final score
-    # ------------------------------------------------------------------
-    raw_score = sum(sub_scores[d] * weights_used[d] for d in active_dims)
-    total_penalty = 0.0
-    penalties_applied: dict[str, float] = {}
-
-    # Scaled failure penalty (if under 60.0, apply linearly up to _MAX_PENALTY_FAILURE)
-    failure_score = sub_scores.get("failure", 100.0)
-    if failure_score < 60.0:
-        penalty = _MAX_PENALTY_FAILURE * ((60.0 - failure_score) / 60.0)
-        actual_p = float(np.clip(penalty, 0.0, _MAX_PENALTY_FAILURE))
-        total_penalty += actual_p
-        penalties_applied["Failure"] = round(actual_p, 1)
-
-    # Scaled calibration penalty (if ece > 0.05, apply linearly)
-    calibration_data = results.get("calibration", {})
-    if "ece" in calibration_data and calibration_data["ece"] is not None:
-        try:
-            ece = float(calibration_data["ece"])
-            if ece > 0.05:
-                # ECE=0.15 gives max penalty
-                penalty = _MAX_PENALTY_CALIBRATION * ((ece - 0.05) / 0.10)
-                actual_p = float(np.clip(penalty, 0.0, _MAX_PENALTY_CALIBRATION))
-                total_penalty += actual_p
-                penalties_applied["Calibration"] = round(actual_p, 1)
-        except (ValueError, TypeError):
-            pass
-
-    bias_has_severe_violation = False
-    max_gap = 0.0
-    bias_module = results.get("bias", {})
-
-    # Consolidate subgroup and equalized_odds into a single fairness penalty
-    for feat_data in bias_module.get("subgroup_performance", {}).values():
-        if isinstance(feat_data, dict):
-            gap = feat_data.get("__summary__", {}).get("performance_gap", 0.0)
-            if gap is not None:
-                try:
-                    gap_val = float(gap)
-                    max_gap = max(max_gap, gap_val)
-                    if gap_val > 0.15:
-                        bias_has_severe_violation = True
-                except (ValueError, TypeError):
-                    pass
-
-    for val in bias_module.get("equalized_odds", {}).values():
-        if not isinstance(val, dict):
-            continue
-        summary = val.get("__summary__", {})
-        if summary.get("tpr_violation") == "severe" or summary.get("fpr_violation") == "severe":
-            bias_has_severe_violation = True
-            break
-
-    if bias_has_severe_violation:
-        actual_p = float(_MAX_PENALTY_FAIRNESS)
-        total_penalty += actual_p
-        penalties_applied["Fairness"] = round(actual_p, 1)
-    elif max_gap > 0.05:
-        # Scale penalty based on gap from 0.05 up to 0.15
-        penalty = _MAX_PENALTY_FAIRNESS * ((max_gap - 0.05) / 0.10)
-        actual_p = float(np.clip(penalty, 0.0, _MAX_PENALTY_FAIRNESS))
-        total_penalty += actual_p
-        penalties_applied["Fairness"] = round(actual_p, 1)
-
-    # Cap total penalty to preserve general score variance
-    if total_penalty > _MAX_TOTAL_PENALTY:
-        scale = _MAX_TOTAL_PENALTY / total_penalty
-        for k in penalties_applied:
-            penalties_applied[k] = round(penalties_applied[k] * scale, 1)
-        total_penalty = float(_MAX_TOTAL_PENALTY)
-
-    base_score = int(round(float(np.clip(raw_score, 0.0, 100.0))))
-    raw_score -= total_penalty
-
-    final_score = int(round(float(np.clip(raw_score, 0.0, 100.0))))
-
-    breakdown = {d: round(sub_scores[d] * weights_used[d], 2) for d in active_dims}
-
-    # ------------------------------------------------------------------
-    # 4. Assign grade & Check Blockers
-    # ------------------------------------------------------------------
-    conf_gap = results.get("failure", {}).get("confidence_gap", {}).get("gap", 0.0)
-    ece_val = calibration_data.get("ece", 0.0) if isinstance(calibration_data, dict) else 0.0
-    is_confidently_wrong = failure_score < 50.0 and ece_val > 0.15 and conf_gap < 0.05
-
-    is_blocked = False
-    block_reason = ""
-    # Hierarchy: Failure > Fairness > Calibration
-    if is_confidently_wrong:
-        is_blocked = True
-        block_reason = (
-            "Blocked by 'confidently wrong' behavior (mismatched confidence-weighted errors)"
+    # 3. Blockers: critical signals that must not be averaged away
+    blockers: list[str] = []
+    failure = results.get("failure", {}) if isinstance(results.get("failure"), dict) else {}
+    accuracy = failure.get("accuracy")
+    baseline = failure.get("baseline_accuracy")
+    if accuracy is not None and baseline is not None and accuracy <= baseline:
+        blockers.append(
+            f"Blocked by no predictive skill (accuracy {accuracy:.3f} does not beat "
+            f"the majority-class baseline {baseline:.3f})"
         )
-    elif failure_score < 40.0:
-        is_blocked = True
-        block_reason = (
-            "Blocked by high diagnostic risk (misaligned confidence-weighted error distribution)"
+    calibration = results.get("calibration", {})
+    oce = calibration.get("overconfidence_error") if isinstance(calibration, dict) else None
+    if oce is not None and float(oce) > _BLOCK_OVERCONFIDENCE:
+        blockers.append(
+            f"Blocked by overconfidence (overconfidence error {float(oce):.3f} "
+            f"> {_BLOCK_OVERCONFIDENCE})"
+        )
+    fairness_gaps = _fairness_gaps(results.get("bias", {}) or {})
+    if fairness_gaps and max(fairness_gaps) > _BLOCK_FAIRNESS_GAP:
+        blockers.append(
+            f"Blocked by severe fairness violation (largest gap {max(fairness_gaps):.3f} "
+            f"> {_BLOCK_FAIRNESS_GAP})"
         )
 
-    elif bias_has_severe_violation:
-        is_blocked = True
-        block_reason = "Blocked by severe fairness violations"
-    elif ece_val > 0.1:
-        is_blocked = True
-        block_reason = "Blocked due to poor calibration (ECE > 0.1)"
+    # 4. Caps: an incomplete assessment or a very weak dimension cannot pass
+    caps: list[str] = []
+    if is_partial:
+        caps.append(
+            "Incomplete assessment, not assessed: "
+            + ", ".join(missing_dimensions)
+            + " (capped at grade C)"
+        )
+    weak = sorted(d for d, s in sub_scores.items() if s < _WEAK_DIMENSION)
+    if weak:
+        caps.append("Weak dimension: " + ", ".join(weak) + " (capped at grade C)")
 
-    if is_blocked:
-        grade = "D"
-        verdict = f"Low Trust - {block_reason}"
-    else:
-        grade, verdict = "D", "Low Trust - serious issues"
-        for threshold, g, v in _GRADE_THRESHOLDS:
-            if final_score >= threshold:
-                grade, verdict = g, v
-                break
-        if is_partial:
-            # An incomplete assessment can never pass (ADR-001, TL-03).
-            if grade in ("A", "B"):
-                grade = "C"
-            verdict = (
-                "Incomplete assessment - not assessed: "
-                + ", ".join(missing_dimensions)
-                + " (grade capped at C)"
-            )
+    score, base_score, grade, verdict = _finalize(raw_score, blockers, caps)
+    if not sub_scores and not blockers:
+        # Nothing could be scored: report insufficient evidence instead of a
+        # misleading 0/D (ADR-001; SPOS NEEDS_EVIDENCE).
+        grade = NOT_ASSESSED_GRADE
+        verdict = (
+            "Not assessed - no dimension could be scored; provide y_prob "
+            "(calibration, failure) and/or sensitive_features (fairness)"
+        )
 
     return TrustScoreResult(
-        score=final_score,
+        score=score,
         grade=grade,
         verdict=verdict,
-        sub_scores={d: round(sub_scores[d], 1) for d in active_dims},
-        weights_used={d: round(weights_used[d], 3) for d in active_dims},
-        breakdown=breakdown,
-        penalties_applied=penalties_applied,
+        sub_scores={d: round(sub_scores[d], 1) for d in weights_used},
+        weights_used={d: round(weights_used[d], 3) for d in weights_used},
+        breakdown={d: round(sub_scores[d] * weights_used[d], 2) for d in weights_used},
+        penalties_applied={},
         base_score=base_score,
-        is_blocked=is_blocked,
+        is_blocked=bool(blockers),
         task_type="classification",
         is_partial=is_partial,
         missing_dimensions=missing_dimensions,
+        blockers=blockers,
+        caps_applied=caps,
     )
 
 
@@ -601,10 +588,12 @@ def compute_trust_score(
 # redistributed away), exactly as a no-embeddings classification report drops
 # Representation today.
 #
-# Blockers (→ grade D):  negative skill (S < 0); severe interval miscoverage
-#                        (calibration_error < −0.10 — materially over-confident).
-# Penalties (not blockers): a heavy tail docks the Accuracy/Skill dimension; weak
-#                        uncertainty correlation docks the composite.
+# Blockers (→ grade D, score ≤ 39): negative skill (S < 0); severe interval
+#                        miscoverage (calibration_error < −0.10 — materially
+#                        over-confident).
+# Inside a sub-score only: a heavy tail docks the Accuracy/Skill dimension. Weak
+#                        uncertainty correlation lowers Informativeness and is not
+#                        penalised a second time (methodology 2.0, TL-09).
 
 _REGRESSION_DEFAULT_WEIGHTS: dict[str, float] = {
     "accuracy": 0.30,
@@ -636,11 +625,6 @@ _REG_TAIL_RATIO_THRESHOLD = 3.0
 _REG_TAIL_RATIO_SCALE = 7.0
 _REG_MAX_TAIL_DOCK_FRACTION = 0.50
 
-# Weak-uncertainty-correlation penalty (docks the composite). No penalty at/above
-# the "informative" boundary; scales up as the correlation falls toward (and
-# below) zero.
-_REG_INFORMATIVE_CORR = 0.50
-_REG_MAX_WEAK_CORR_PENALTY = 15.0
 
 # Severe-miscoverage blocker: realised coverage this far below nominal means the
 # intervals are materially over-confident (the regression "confidently wrong").
@@ -823,12 +807,9 @@ def regression_trust_score(
             "(emitted by the regression pipeline; see issue #150)."
         )
 
-    w = dict(_REGRESSION_DEFAULT_WEIGHTS)
-    if weights:
-        w.update(weights)
+    w = _validated_weights(weights, _REGRESSION_DEFAULT_WEIGHTS)
 
     sub_scores: dict[str, float] = {}
-    penalties_applied: dict[str, float] = {}
 
     # ------------------------------------------------------------------
     # 1. Sub-scores (Accuracy always available; the other two are optional)
@@ -856,13 +837,11 @@ def regression_trust_score(
     n_interval_levels = int(coverage.get("n_levels", 0)) if coverage_present else 0
     n_calibrated_levels = int(coverage.get("n_calibrated_levels", 0)) if coverage_present else 0
     corr_present = _reg_metric_present(corr) and ("pearson" in corr or "spearman" in corr)
-    strongest_corr: float | None = None
     informativeness_status = "absent"
     if sharpness_skill is not None:
         sub_scores["uncertainty_informativeness"] = _informativeness_from_sharpness(coverage)
         informativeness_status = "present"
     elif corr_present:
-        strongest_corr = max(float(corr.get("pearson", 0.0)), float(corr.get("spearman", 0.0)))
         sub_scores["uncertainty_informativeness"] = _uncertainty_informativeness_score(corr)
         informativeness_status = "present"
     elif n_interval_levels >= 2 and n_calibrated_levels == 0:
@@ -879,7 +858,6 @@ def regression_trust_score(
         # "we tried and it was unusable" signal and keeps redistributing.
         sub_scores["uncertainty_informativeness"] = 0.0
         informativeness_status = "unusable_uncertainty"
-    informativeness_present = "uncertainty_informativeness" in sub_scores
 
     # ------------------------------------------------------------------
     # 2. Redistribute weights across the dimensions actually present
@@ -896,57 +874,27 @@ def regression_trust_score(
             weights_used[dim] = 1.0 / len(active_dims) if active_dims else 0.0
 
     raw_score = sum(sub_scores[d] * weights_used[d] for d in active_dims)
-    base_score = int(round(float(np.clip(raw_score, 0.0, 100.0))))
-
-    # ------------------------------------------------------------------
-    # 3. Composite penalty: weak uncertainty correlation (only when present).
-    #    The heavy-tail penalty is NOT applied here — it already docked the
-    #    Accuracy sub-score in step 1, so base_score − composite_penalties stays
-    #    consistent with final_score.
-    # ------------------------------------------------------------------
-    if (
-        informativeness_present
-        and strongest_corr is not None
-        and strongest_corr < _REG_INFORMATIVE_CORR
-    ):
-        frac = float(
-            np.clip((_REG_INFORMATIVE_CORR - strongest_corr) / _REG_INFORMATIVE_CORR, 0.0, 1.0)
-        )
-        weak_corr_penalty = _REG_MAX_WEAK_CORR_PENALTY * frac
-        raw_score -= weak_corr_penalty
-        penalties_applied["Weak Uncertainty"] = round(weak_corr_penalty, 1)
-
-    final_score = int(round(float(np.clip(raw_score, 0.0, 100.0))))
     breakdown = {d: round(sub_scores[d] * weights_used[d], 2) for d in active_dims}
 
     # ------------------------------------------------------------------
-    # 4. Blockers → grade D (negative skill; severe interval miscoverage)
+    # 3. Blockers → grade D (negative skill; severe interval miscoverage).
+    #    Weak uncertainty correlation is scored only in its sub-score; the
+    #    former extra composite penalty counted the same signal twice (TL-09).
     # ------------------------------------------------------------------
-    is_blocked = False
-    block_reason = ""
+    blockers: list[str] = []
     if skill < 0.0:
-        is_blocked = True
-        block_reason = "Blocked by negative skill (worse than predicting the mean; R^2 < 0)"
+        blockers.append("Blocked by negative skill (worse than predicting the mean; R^2 < 0)")
     elif (
         interval_present
         and calibration_error is not None
         and calibration_error < _REG_SEVERE_MISCOVERAGE
     ):
-        is_blocked = True
-        block_reason = (
+        blockers.append(
             f"Blocked by severe interval miscoverage (coverage {calibration_error:+.2f} "
             "below nominal - over-confident intervals)"
         )
 
-    if is_blocked:
-        grade = "D"
-        verdict = f"Low Trust - {block_reason}"
-    else:
-        grade, verdict = "D", "Low Trust - serious issues"
-        for threshold, g, v in _GRADE_THRESHOLDS:
-            if final_score >= threshold:
-                grade, verdict = g, v
-                break
+    final_score, base_score, grade, verdict = _finalize(raw_score, blockers, [])
 
     return TrustScoreResult(
         score=final_score,
@@ -955,9 +903,10 @@ def regression_trust_score(
         sub_scores={d: round(sub_scores[d], 1) for d in active_dims},
         weights_used={d: round(weights_used[d], 3) for d in active_dims},
         breakdown=breakdown,
-        penalties_applied=penalties_applied,
+        penalties_applied={},
         base_score=base_score,
-        is_blocked=is_blocked,
+        is_blocked=bool(blockers),
+        blockers=blockers,
         task_type="regression",
         informativeness_status=informativeness_status,
     )

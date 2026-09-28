@@ -127,9 +127,13 @@ def _binned_calibration_gaps(
     y_prob: np.ndarray,
     n_bins: int,
     strategy: str,
+    signed: bool = False,
 ) -> tuple[list[float], list[float]]:
     """
-    Shared binning + sample-assignment core for ECE and MCE.
+    Shared binning + sample-assignment core for ECE, MCE and the overconfidence error.
+
+    With ``signed=True`` the gaps are ``confidence − accuracy`` (positive when
+    the model is overconfident) instead of their absolute value.
 
     Returns, for every **non-empty** confidence bin, the fraction of samples
     that landed in the bin (``weights``) and the absolute accuracy-confidence
@@ -180,7 +184,8 @@ def _binned_calibration_gaps(
     if len(bin_edges) < 2:
         if n == 0:
             return weights, gaps
-        return [1.0], [abs(float(y_true.mean()) - float(y_prob.mean()))]
+        diff = float(y_prob.mean()) - float(y_true.mean())
+        return [1.0], [diff if signed else abs(diff)]
 
     for lo, hi in zip(bin_edges[:-1], bin_edges[1:]):
         # Include the right edge in the last bin
@@ -196,7 +201,8 @@ def _binned_calibration_gaps(
         accuracy = y_true[mask].mean()
         confidence = y_prob[mask].mean()
         weights.append(n_bin / n)
-        gaps.append(abs(accuracy - confidence))
+        diff = float(confidence - accuracy)
+        gaps.append(diff if signed else abs(diff))
 
     return weights, gaps
 
@@ -374,6 +380,55 @@ def maximum_calibration_error(
 # ---------------------------------------------------------------------------
 # Reliability Curve
 # ---------------------------------------------------------------------------
+
+
+def overconfidence_error(
+    y_correct: np.ndarray,
+    confidence: np.ndarray,
+    n_bins: int = 10,
+    strategy: str = "uniform",
+) -> float:
+    """
+    Overconfidence error (OCE): the part of ECE where confidence exceeds accuracy.
+
+    ``OCE = Σ_b (n_b / n) · max(conf_b − acc_b, 0)`` over top-label confidence
+    bins, so ``0 ≤ OCE ≤ ECE``. Unlike ECE it ignores *under*confidence, which
+    makes a model cautious rather than dangerous. The Trust Score uses it for
+    the "overconfident" blocker (ADR-001, TL-09).
+
+    Parameters
+    ----------
+    y_correct : np.ndarray
+      1 where the top-label prediction is correct, else 0, shape (n_samples,).
+    confidence : np.ndarray
+      Top-label confidence (maximum class probability), shape (n_samples,).
+    n_bins : int, default=10
+      Number of confidence bins.
+    strategy : {"uniform", "quantile"}, default="uniform"
+      Binning strategy, as in :func:`expected_calibration_error`.
+
+    Returns
+    -------
+    float
+      The overconfidence error in [0, 1].
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> overconfidence_error(np.array([1, 0, 1, 0]), np.array([0.9, 0.9, 0.9, 0.9]), n_bins=1)
+    0.4
+    """
+    y_correct = np.asarray(y_correct, dtype=float)
+    confidence = np.asarray(confidence, dtype=float)
+    if y_correct.shape != confidence.shape:
+        raise ValueError(
+            f"y_correct and confidence must have the same shape, got {y_correct.shape} "
+            f"and {confidence.shape}."
+        )
+    if y_correct.size == 0:
+        raise ValueError("y_correct and confidence must be non-empty.")
+    weights, gaps = _binned_calibration_gaps(y_correct, confidence, n_bins, strategy, signed=True)
+    return round(float(sum(w * max(g, 0.0) for w, g in zip(weights, gaps))), 10)
 
 
 def reliability_curve(

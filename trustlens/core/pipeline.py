@@ -34,11 +34,13 @@ from trustlens.metrics.calibration import (
     brier_score,
     expected_calibration_error,
     maximum_calibration_error,
+    overconfidence_error,
     reliability_curve,
 )
 from trustlens.metrics.conformal import conformal_diagnostics
 from trustlens.metrics.failure import (
     confidence_gap,
+    error_detection_auroc,
     misclassification_summary,
 )
 from trustlens.metrics.regression import (
@@ -59,6 +61,31 @@ logger = logging.getLogger(__name__)
 # Subgroups smaller than this carry too little evidence for a fairness gap: they
 # are reported with ``low_support`` and excluded from gaps (ADR-001, TL-06).
 _MIN_FAIRNESS_GROUP_SIZE = 30
+
+
+def _top_label_overconfidence(
+    y_true: np.ndarray, y_prob: np.ndarray, class_labels: Optional[np.ndarray]
+) -> float:
+    """Overconfidence error of the top-label prediction ``argmax(y_prob)``."""
+    if y_prob.ndim == 2:
+        n_classes = y_prob.shape[1]
+        confidence = np.max(y_prob, axis=1)
+        predicted = np.argmax(y_prob, axis=1)
+    else:
+        n_classes = 2
+        confidence = np.maximum(y_prob, 1.0 - y_prob)
+        predicted = (y_prob >= 0.5).astype(int)
+    true_index = _encode_labels_for_probability_columns(y_true, n_classes, class_labels)
+    return overconfidence_error((predicted == true_index).astype(float), confidence)
+
+
+def _accuracy_and_baseline(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
+    """Accuracy and the majority-class baseline it must beat to show skill."""
+    _, counts = np.unique(y_true, return_counts=True)
+    return {
+        "accuracy": round(float(np.mean(y_true == y_pred)), 6),
+        "baseline_accuracy": round(float(counts.max() / counts.sum()), 6),
+    }
 
 
 def _as_python_label(label: Any) -> Any:
@@ -184,6 +211,7 @@ def _run_analysis_pipeline(
                     "brier_score": float(mbrier),
                     "ece": expected_calibration_error(correct_mask, confidences),
                     "mce": maximum_calibration_error(correct_mask, confidences),
+                    "overconfidence_error": _top_label_overconfidence(y_true, y_prob, class_labels),
                     "reliability_curve": reliability_curve(correct_mask, confidences),
                 }
             else:
@@ -199,6 +227,7 @@ def _run_analysis_pipeline(
                     "brier_score": brier_score(y_true_encoded, y_prob_pos),
                     "ece": expected_calibration_error(y_true_encoded, y_prob_pos),
                     "mce": maximum_calibration_error(y_true_encoded, y_prob_pos),
+                    "overconfidence_error": _top_label_overconfidence(y_true, y_prob, class_labels),
                     "reliability_curve": reliability_curve(y_true_encoded, y_prob_pos),
                 }
         else:
@@ -249,7 +278,9 @@ def _run_analysis_pipeline(
             results["failure"] = {
                 "misclassification_summary": misclassification_summary(y_true, y_pred, y_prob),
                 "confidence_gap": confidence_gap(y_true, y_pred, y_prob),
+                "confidence_auroc": error_detection_auroc(y_true, y_pred, y_prob),
                 "n_classes": int(y_prob.shape[1]) if y_prob.ndim == 2 else 2,
+                **_accuracy_and_baseline(y_true, y_pred),
             }
         else:
             logger.warning(
@@ -267,6 +298,7 @@ def _run_analysis_pipeline(
                     }
                 },
                 "confidence_gap": {"gap": 0.0, "status": "skipped"},
+                **_accuracy_and_baseline(y_true, y_pred),
             }
             missing_components.append("failure_confidence_metrics")
 

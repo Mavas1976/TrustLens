@@ -40,6 +40,10 @@ from ._version import __version__
 logger = logging.getLogger(__name__)
 
 
+# A sub-score below this is named as a reason in explanations (methodology 2.0).
+_WEAK_EXPLAIN = 60.0
+
+
 class TrustReport:
     """
     Container for all TrustLens analysis results.
@@ -122,6 +126,7 @@ class TrustReport:
             self.trust_score = compute_trust_score(results)
             self._compute_patterns()
 
+        self.metadata["score_version"] = self.trust_score.score_version
         self.metadata["partial"] = self.trust_score.is_partial
         if self.trust_score.missing_dimensions:
             self.metadata["missing_dimensions"] = list(self.trust_score.missing_dimensions)
@@ -229,7 +234,17 @@ class TrustReport:
         """Rank and format top penalties for explanation."""
         penalties = self.trust_score.penalties_applied
         if not penalties:
-            return []
+            # Methodology 2.0: name the weakest assessed dimensions instead.
+            weak = sorted(
+                (s, d) for d, s in self.trust_score.sub_scores.items() if s < _WEAK_EXPLAIN
+            )[:3]
+            if not weak:
+                return []
+            labels = ["Dominant Issue", "Secondary Issue", "Minor Impact"]
+            lines = ["Score Explanation:"]
+            for label, (s, d) in zip(labels, weak):
+                lines.append(f"  - {label:<16}: {d.replace('_', ' ').title()} ({s:.1f}/100)")
+            return lines
 
         # Sort by magnitude descending
         sorted_p = sorted(penalties.items(), key=lambda x: x[1], reverse=True)
@@ -249,8 +264,14 @@ class TrustReport:
         """Provide a structured explanation for the deployment verdict."""
         self._require_classification("deployment_explanation")
         ts = self.trust_score
-        grade_map = {"A": "PASS", "B": "CAUTION", "C": "CAUTION", "D": "BLOCK"}
-        verdict = "BLOCK" if ts.is_blocked else grade_map.get(ts.grade, "PASS")
+        grade_map = {
+            "A": "PASS",
+            "B": "CAUTION",
+            "C": "CAUTION",
+            "D": "BLOCK",
+            "N/A": "INSUFFICIENT_EVIDENCE",
+        }
+        verdict = "BLOCK" if ts.is_blocked else grade_map.get(ts.grade, "CAUTION")
 
         reasons = []
         recommendations = []
@@ -275,10 +296,22 @@ class TrustReport:
         # Case-insensitive penalty key matching
         penalties_lower = {k.lower(): (k, v) for k, v in penalties.items()}
 
-        for dim in self.trust_score.sub_scores.keys():
+        for dim, dim_score in self.trust_score.sub_scores.items():
             expected_penalty_key = dim_to_penalty_key.get(dim, dim.title())
 
-            if expected_penalty_key.lower() in penalties_lower:
+            if not penalties and dim_score < _WEAK_EXPLAIN:
+                # Methodology 2.0: no penalties; a weak sub-score is the reason.
+                reasons.append(
+                    {
+                        "status": "fail",
+                        "message": f"{expected_penalty_key} below {_WEAK_EXPLAIN:.0f} "
+                        f"({dim_score:.1f}/100)",
+                    }
+                )
+                rec_key = "fairness" if dim == "bias" else dim
+                if rec_key in rec_map:
+                    recommendations.append(rec_map[rec_key])
+            elif expected_penalty_key.lower() in penalties_lower:
                 actual_key, _ = penalties_lower[expected_penalty_key.lower()]
                 reasons.append({"status": "fail", "message": f"{actual_key} penalty applied"})
                 # Map back to our recommendation keys
@@ -290,6 +323,11 @@ class TrustReport:
                     {"status": "pass", "message": f"{expected_penalty_key} assessment completed"}
                 )
 
+        if getattr(ts, "is_partial", False):
+            recommendations.append(
+                "Complete the assessment: supply predicted probabilities (y_prob) and run all "
+                "core modules before relying on this verdict."
+            )
         if not recommendations:
             recommendations.append("Model meets all trustworthiness criteria for deployment.")
 
@@ -306,6 +344,11 @@ class TrustReport:
                 "metric": dim_to_penalty_key.get(lowest_dim, lowest_dim.title()),
                 "value": ts.sub_scores[lowest_dim],
             }
+
+        for blocker in getattr(ts, "blockers", []) or []:
+            reasons.insert(0, {"status": "fail", "message": blocker})
+        for cap in getattr(ts, "caps_applied", []) or []:
+            reasons.append({"status": "fail", "message": cap})
 
         return {
             "verdict": verdict,
@@ -416,14 +459,8 @@ class TrustReport:
         print(f"\nTRUST SCORE: {ts.score}/100 [{ts.grade}]")
         print(f"Assessment : {ts.verdict}")
 
-        if getattr(ts, "penalties_applied", None):
-            print("\nScore Summary:")
-            print(f"  Base Score        : {ts.base_score}")
-            penalties_str = ", ".join([f"{k} (-{v})" for k, v in ts.penalties_applied.items()])
-            print(
-                f"  Penalties Applied : -{sum(ts.penalties_applied.values()):.1f} [{penalties_str}]"
-            )
-            print(f"  Final Score       : {ts.score}")
+        for line in _score_summary_lines(ts):
+            print(line)
 
         explanation = self._format_score_explanation()
         if explanation:
@@ -490,9 +527,8 @@ class TrustReport:
             for dim, dim_score in ts.sub_scores.items():
                 label = dim.replace("_", " ").title()
                 print(f"  - {label:<28}: {dim_score:5.1f}/100")
-        if ts.penalties_applied:
-            pen = ", ".join(f"{k} (-{v})" for k, v in ts.penalties_applied.items())
-            print(f"Penalties  : {pen}")
+        for line in _score_summary_lines(ts):
+            print(line)
 
         ed = reg.get("error_distribution", {})
         if ed and ed.get("status") != "skipped":
@@ -599,14 +635,7 @@ class TrustReport:
         ts = self.trust_score
         lines.append(f"\nTRUST SCORE: {ts.score}/100 [{ts.grade}]")
         lines.append(f"Assessment : {ts.verdict}")
-        if getattr(ts, "penalties_applied", None):
-            lines.append("\nScore Summary:")
-            lines.append(f"  Base Score        : {ts.base_score}")
-            penalties_str = ", ".join([f"{k} (-{v})" for k, v in ts.penalties_applied.items()])
-            lines.append(
-                f"  Penalties Applied : -{sum(ts.penalties_applied.values()):.1f} [{penalties_str}]"
-            )
-            lines.append(f"  Final Score       : {ts.score}")
+        lines.extend(_score_summary_lines(ts))
         explanation = self._format_score_explanation()
         if explanation:
             lines.append("")
@@ -1730,6 +1759,10 @@ class TrustReport:
                     "breakdown": ts.breakdown,
                     "is_partial": ts.is_partial,
                     "missing_dimensions": ts.missing_dimensions,
+                    "blockers": ts.blockers,
+                    "caps_applied": ts.caps_applied,
+                    "base_score": ts.base_score,
+                    "score_version": ts.score_version,
                     "deployment_explanation": self.deployment_explanation,
                 },
                 indent=2,
@@ -2032,6 +2065,32 @@ class TrustReport:
 # ---------------------------------------------------------------------------
 # Failure display helpers
 # ---------------------------------------------------------------------------
+
+
+def _score_summary_lines(ts: Any) -> list[str]:
+    """Explain how the reported score was reached.
+
+    Methodology 2.0 reports blockers and caps; results from methodology 1.x
+    (for example rebuilt from older saved reports) still list their penalties.
+    """
+    penalties = getattr(ts, "penalties_applied", None) or {}
+    if penalties:
+        penalties_str = ", ".join(f"{k} (-{v})" for k, v in penalties.items())
+        return [
+            "\nScore Summary:",
+            f"  Base Score        : {ts.base_score}",
+            f"  Penalties Applied : -{sum(penalties.values()):.1f} [{penalties_str}]",
+            f"  Final Score       : {ts.score}",
+        ]
+    blockers = list(getattr(ts, "blockers", []) or [])
+    caps = list(getattr(ts, "caps_applied", []) or [])
+    if not (blockers or caps):
+        return []
+    lines = ["\nScore Summary:", f"  Weighted Score    : {ts.base_score}"]
+    lines.extend(f"  Blocker           : {b}" for b in blockers)
+    lines.extend(f"  Cap               : {c}" for c in caps)
+    lines.append(f"  Final Score       : {ts.score}")
+    return lines
 
 
 def _danger_rating(confidence: float) -> str:

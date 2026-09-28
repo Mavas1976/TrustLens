@@ -193,3 +193,26 @@ def test_deployment_summary_in_html_report(mock_report):
     assert "Deployment Verdict:" in html
     assert "Fairness" in html
     assert "Investigate subgroup performance disparities" in html
+
+
+def test_v2_explanation_names_weak_dimensions_and_blockers(mock_report):
+    """Methodology 2.0: reasons come from weak sub-scores and blockers, not penalties."""
+    mock_report.trust_score = TrustScoreResult(
+        score=39,
+        grade="D",
+        verdict="Low Trust - Blocked by overconfidence",
+        sub_scores={"calibration": 45.0, "failure": 90.0},
+        penalties_applied={},
+        is_blocked=True,
+        blockers=["Blocked by overconfidence (overconfidence error 0.150 > 0.1)"],
+    )
+    exp = mock_report.deployment_explanation
+    assert exp["verdict"] == "BLOCK"
+    assert exp["reasons"][0] == {
+        "status": "fail",
+        "message": "Blocked by overconfidence (overconfidence error 0.150 > 0.1)",
+    }
+    assert any(r["message"].startswith("Calibration below 60") for r in exp["reasons"])
+    assert any("Failure assessment completed" == r["message"] for r in exp["reasons"])
+    assert exp["primary_risk"]["metric"] == "Calibration"
+    assert any("temperature scaling" in rec for rec in exp["recommendations"])

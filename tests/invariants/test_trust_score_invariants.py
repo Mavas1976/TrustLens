@@ -159,7 +159,8 @@ def test_perfect_classifier_has_no_fairness_violation():
         sensitive_features={"g": groups},
         verbose=False,
     ).trust_score
-    assert "Fairness" not in ts.penalties_applied, ts.penalties_applied
+    assert not any("fairness" in b for b in ts.blockers), ts.blockers
+    assert ts.sub_scores.get("bias", 100.0) >= 90.0, ts.sub_scores
     assert not ts.is_blocked, ts.verdict
 
 
@@ -178,7 +179,8 @@ def test_tiny_group_does_not_trigger_fairness_block():
         sensitive_features={"g": groups},
         verbose=False,
     ).trust_score
-    assert "Fairness" not in ts.penalties_applied, ts.penalties_applied
+    assert not any("fairness" in b for b in ts.blockers), ts.blockers
+    assert ts.sub_scores.get("bias", 100.0) >= 90.0, ts.sub_scores
 
 
 # ---------------------------------------------------------------------------
@@ -255,11 +257,10 @@ def test_worse_calibration_never_raises_the_score():
 
 
 # ---------------------------------------------------------------------------
-# Trust Score v2 (phase 2) — tracked, not yet fixed
+# Calibration is comparable across the number of classes (TL-05)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="TL-05: multiclass Brier unnormalised (phase 2)")
 def test_perfectly_calibrated_multiclass_has_high_calibration_score():
     rng = np.random.default_rng(RNG_SEED)
     k, n = 10, 5000
@@ -284,3 +285,53 @@ def test_compare_never_recommends_a_partial_assessment(capsys):
     out = capsys.readouterr().out
     assert "DO NOT DEPLOY" in out
     assert "Recommendation: Deploy" not in out
+
+
+def test_compare_returns_structured_ranking_with_names():
+    """TL-11: compare() labels reports and returns a machine-readable result."""
+    from trustlens import compare
+
+    y, y_pred, y_prob = _calibrated_binary(3000, 8.0)
+    good = analyze(None, None, y, y_pred=y_pred, y_prob=y_prob, verbose=False)
+    q = np.clip(y_prob[:, 1] ** 0.3, 1e-6, 1 - 1e-6)  # same predictions, overconfident
+    worse = analyze(None, None, y, y_pred=y_pred, y_prob=np.column_stack([1 - q, q]), verbose=False)
+    result = compare([good, worse], names=["calibrated", "distorted"])
+    assert result["recommended"] == "calibrated"
+    assert [r["name"] for r in result["ranking"]][0] == "calibrated"
+    assert {r["name"] for r in result["ranking"]} | {e["name"] for e in result["excluded"]} == {
+        "calibrated",
+        "distorted",
+    }
+    with pytest.raises(ValueError, match="names"):
+        compare([good, worse], names=["only-one"])
+
+
+def test_saved_report_records_methodology_version(tmp_path):
+    y, y_pred, y_prob = _calibrated_binary(1000, 4.0)
+    report = analyze(None, None, y, y_pred=y_pred, y_prob=y_prob, verbose=False)
+    assert report.metadata["score_version"] == "2.0"
+    bundle = report.save(str(tmp_path / "bundle"))
+    import json
+
+    saved = json.loads((bundle / "trust_score.json").read_text())
+    assert saved["score_version"] == "2.0"
+    assert "blockers" in saved and "caps_applied" in saved
+
+
+def test_nothing_assessable_reports_insufficient_evidence():
+    """A report without probabilities or sensitive features cannot be graded."""
+    y, y_pred, _ = _calibrated_binary(2000, 8.0)
+    report = analyze(None, None, y, y_pred=y_pred, verbose=False)
+    ts = report.trust_score
+    assert ts.grade == "N/A" and not ts.is_blocked
+    exp = report.deployment_explanation
+    assert exp["verdict"] == "INSUFFICIENT_EVIDENCE"
+    assert not any("meets all" in rec for rec in exp["recommendations"])
+
+
+def test_no_skill_is_detectable_without_probabilities():
+    """The no-skill blocker needs only predictions, so it still applies."""
+    y = np.array([0] * 700 + [1] * 300)
+    report = analyze(None, None, y, y_pred=np.zeros_like(y), verbose=False)
+    assert report.trust_score.is_blocked
+    assert report.trust_score.grade == "D"

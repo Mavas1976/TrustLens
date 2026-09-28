@@ -47,16 +47,9 @@ GOOD_CLASSIFIERS = [
         {"A", "B"},
     ),
     ("iris-logreg", load_iris, _scaled_logreg, {"A", "B", "C"}),
-    pytest.param(
-        "wine-rf",
-        load_wine,
-        lambda: RandomForestClassifier(200, random_state=0),
-        {"A"},
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="TL-09: ECE blocker fires on an underconfident, 100%-accurate model (phase 2)",
-        ),
-    ),
+    # 100% accurate but underconfident (ECE ~0.12, overconfidence 0): deployable,
+    # with calibration as the flagged dimension (methodology 2.0, TL-09).
+    ("wine-rf", load_wine, lambda: RandomForestClassifier(200, random_state=0), {"A", "B"}),
 ]
 
 
