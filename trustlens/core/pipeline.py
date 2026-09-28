@@ -75,8 +75,8 @@ def _argmax_labels(y_prob: np.ndarray, class_labels: Optional[np.ndarray]) -> np
     if class_labels is not None and len(class_labels) == (
         y_prob.shape[1] if y_prob.ndim == 2 else 2
     ):
-        return np.asarray(class_labels)[index]
-    return index
+        return cast(np.ndarray, np.asarray(class_labels)[index])
+    return cast(np.ndarray, index)
 
 
 def _top_label_overconfidence(
