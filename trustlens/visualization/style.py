@@ -363,3 +363,17 @@ def get_categorical_colors(n: int, theme: Theme | None = None) -> list[str]:
     if not palette:
         raise ValueError("theme palette must be non-empty")
     return [palette[i % len(palette)] for i in range(n)]
+
+
+def save_figure(fig: Any, path: Any, **kwargs: Any) -> None:
+    """Save ``fig`` to ``path``, creating missing parent directories first.
+
+    All TrustLens plotting functions save through this helper, so a
+    ``save_path`` in a directory that does not exist yet works instead of
+    failing with FileNotFoundError (TL-20).
+    """
+    from pathlib import Path
+
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(target, **kwargs)

@@ -15,7 +15,7 @@ import re
 
 import matplotlib.pyplot as plt
 
-from trustlens.visualization.style import apply_style, get_categorical_colors
+from trustlens.visualization.style import apply_style, get_categorical_colors, save_figure
 
 
 def _rate_or_nan(value: float | None) -> float:
@@ -180,7 +180,7 @@ def plot_subgroup_performance(
         ax.grid(axis="y", alpha=0.35)
 
         if save_path:
-            fig.savefig(save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
+            save_figure(fig, save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
         if show:
             if "agg" not in plt.get_backend().lower():
                 plt.show()
@@ -318,7 +318,7 @@ def plot_equalized_odds(
         ax.grid(axis="y", alpha=0.35)
 
         if save_path:
-            fig.savefig(save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
+            save_figure(fig, save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
         if show:
             if "agg" not in plt.get_backend().lower():
                 plt.show()
@@ -418,7 +418,7 @@ def plot_fairness_gap(
         ax.grid(axis="y", alpha=0.35)
 
         if save_path:
-            fig.savefig(save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
+            save_figure(fig, save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
         if show:
             if "agg" not in plt.get_backend().lower():
                 plt.show()

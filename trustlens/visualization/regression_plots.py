@@ -24,7 +24,7 @@ from typing import cast
 import matplotlib.pyplot as plt
 import numpy as np
 
-from trustlens.visualization.style import apply_style
+from trustlens.visualization.style import apply_style, save_figure
 
 
 def _as_1d(name: str, values: np.ndarray) -> np.ndarray:
@@ -173,7 +173,7 @@ def plot_residuals(
         ax.grid(True, alpha=theme.grid["alpha"])
 
         if save_path:
-            fig.savefig(save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
+            save_figure(fig, save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
 
         if show:
             plt.show()
@@ -299,7 +299,7 @@ def plot_error_distribution(
         ax.grid(True, alpha=theme.grid["alpha"])
 
         if save_path:
-            fig.savefig(save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
+            save_figure(fig, save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
 
         if show:
             plt.show()

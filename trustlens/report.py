@@ -26,6 +26,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,7 +34,7 @@ from typing import Any, Optional, cast
 
 import numpy as np
 
-from trustlens.visualization.style import BRAND_COLORS
+from trustlens.visualization.style import BRAND_COLORS, save_figure
 
 from ._version import __version__
 
@@ -1540,7 +1541,7 @@ class TrustReport:
             if fig is None:
                 raise ValueError("Failed to generate summary bias plot.")
             if save_path:
-                fig.savefig(_get_save_path(save_path), dpi=150, bbox_inches="tight")
+                save_figure(fig, _get_save_path(save_path), dpi=150, bbox_inches="tight")
             if show:
                 backend = plt.get_backend().lower()
                 if "agg" not in backend:
@@ -1582,6 +1583,7 @@ class TrustReport:
 
         if mode == "all":
             results = {}
+            plot_errors: list[str] = []
 
             # 1. Subgroup
             f_name_s, f_data_s = _get_first("subgroup_performance")
@@ -1594,7 +1596,9 @@ class TrustReport:
                         show=False,
                         save_path=_get_save_path(save_path, "subgroup"),
                     )
-                except Exception:
+                except Exception as exc:  # noqa: BLE001 - reported below
+                    plot_errors.append(f"s: {type(exc).__name__}: {exc}")
+                    logger.warning("Bias plot failed: %s", exc)
                     fig_s = None
             results["subgroup"] = fig_s
 
@@ -1609,7 +1613,9 @@ class TrustReport:
                         show=False,
                         save_path=_get_save_path(save_path, "equalized_odds"),
                     )
-                except Exception:
+                except Exception as exc:  # noqa: BLE001 - reported below
+                    plot_errors.append(f"eo: {type(exc).__name__}: {exc}")
+                    logger.warning("Bias plot failed: %s", exc)
                     fig_eo = None
             results["equalized_odds"] = fig_eo
 
@@ -1622,12 +1628,17 @@ class TrustReport:
                     fig_g = plot_fairness_gap(
                         g_data, g_name, show=False, save_path=_get_save_path(save_path, "gap")
                     )
-                except Exception:
+                except Exception as exc:  # noqa: BLE001 - reported below
+                    plot_errors.append(f"g: {type(exc).__name__}: {exc}")
+                    logger.warning("Bias plot failed: %s", exc)
                     fig_g = None
             results["gap"] = fig_g
 
             if all(v is None for v in results.values()):
-                raise ValueError("Failed to generate any bias plots in 'all' mode.")
+                raise ValueError(
+                    "Failed to generate any bias plots in 'all' mode"
+                    + (": " + "; ".join(plot_errors) if plot_errors else ".")
+                )
 
             if show:
                 backend = plt.get_backend().lower()
@@ -1643,18 +1654,24 @@ class TrustReport:
     # save()
     # ------------------------------------------------------------------
 
-    def save(self, path: str = "trust_report", **kwargs) -> Path:
+    def save(
+        self, path: str | os.PathLike[str] = "trust_report", overwrite: bool = True, **kwargs
+    ) -> Path:
         """
         Save the analysis report.
 
-        If ``path`` ends with '.json' or '.txt', saves a single file.
-        Otherwise, treats ``path`` as a directory and saves a full report
-        bundle (JSON, metadata, plots).
+        If ``path`` ends with '.json' or '.txt', saves a single file. A path
+        without a suffix is treated as a directory and receives a full report
+        bundle (JSON, metadata, plots). Any other suffix (e.g. ``.png``) raises
+        ``ValueError`` instead of silently creating a directory with that name.
 
         Parameters
         ----------
-        path : str
+        path : str or os.PathLike
           Target file path (e.g., "report.json") or directory path.
+        overwrite : bool, default=True
+          When False, refuse to replace an existing file or a non-empty bundle
+          directory (``FileExistsError``).
         **kwargs : Any
           Backward compatibility for ``directory`` argument.
 
@@ -1665,8 +1682,20 @@ class TrustReport:
         """
         if "directory" in kwargs:
             path = kwargs.pop("directory")
+        if kwargs:
+            raise TypeError(f"save() got unexpected keyword argument(s) {sorted(kwargs)}.")
 
+        path = os.fspath(path)
         p = Path(path).resolve()
+        suffix = p.suffix.lower()
+        looks_like_file = suffix[1:].isalpha() and not p.is_dir()
+        if looks_like_file and suffix not in (".json", ".txt"):
+            raise ValueError(
+                f"Unsupported report file type '{p.suffix}'. Use '.json', '.txt', or a "
+                "directory path without a suffix for the full bundle."
+            )
+        if not overwrite and p.exists() and (p.is_file() or any(p.iterdir())):
+            raise FileExistsError(f"{p} already exists; pass overwrite=True to replace it.")
 
         if self.task_type == "regression":
             return self._save_regression(path, p)
@@ -2130,7 +2159,7 @@ def _plot_failure_grid(
     plt.tight_layout()
 
     if save_path:
-        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        save_figure(fig, save_path, dpi=150, bbox_inches="tight")
 
     plt.close(fig)
     return fig

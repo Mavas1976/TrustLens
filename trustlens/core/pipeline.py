@@ -200,15 +200,12 @@ def _run_analysis_pipeline(
     if y_prob is None:
         missing_components.append("probabilities")
 
-    # ------------------------------------------------------------------
-    # Progress Tracking
-    # ------------------------------------------------------------------
-    try:
-        from tqdm import tqdm
-
-        pbar = tqdm(active_modules, desc="Analysing Model", unit="module", leave=False)
-    except ImportError:
-        pbar = active_modules
+    def _progress(message: str) -> None:
+        # User-facing progress only when verbose; otherwise a debug log (TL-26).
+        if verbose:
+            print(message)
+        else:
+            logger.debug(message)
 
     # ------------------------------------------------------------------
     # 2. Calibration module
@@ -218,9 +215,7 @@ def _run_analysis_pipeline(
 
     if "calibration" in active_modules:
         if y_prob is not None:
-            print("Running calibration analysis...")
-            if hasattr(pbar, "set_postfix"):
-                pbar.set_postfix(module="calibration")
+            _progress("Running calibration analysis...")
 
             # Calibration logic based on task type
             if y_prob.ndim == 2 and y_prob.shape[1] > 2:
@@ -277,9 +272,7 @@ def _run_analysis_pipeline(
         # coverage/informativeness from sets). Emitted iff y_pred_sets is
         # supplied; strictly diagnostic-only — never wired into the Trust Score.
         if y_pred_sets is not None:
-            print("Running conformal diagnostics...")
-            if hasattr(pbar, "set_postfix"):
-                pbar.set_postfix(module="conformal")
+            _progress("Running conformal diagnostics...")
             calibration_block = results.setdefault("calibration", {})
             try:
                 # Prediction sets index the probability columns, so encode the
@@ -320,9 +313,7 @@ def _run_analysis_pipeline(
     # ------------------------------------------------------------------
     if "failure" in active_modules:
         if y_prob is not None:
-            print("Running failure analysis...")
-            if hasattr(pbar, "set_postfix"):
-                pbar.set_postfix(module="failure")
+            _progress("Running failure analysis...")
             results["failure"] = {
                 "misclassification_summary": misclassification_summary(y_true, y_pred, y_prob),
                 "confidence_gap": confidence_gap(y_true, y_pred, y_prob),
@@ -354,9 +345,7 @@ def _run_analysis_pipeline(
     # 4. Bias detection module
     # ------------------------------------------------------------------
     if "bias" in active_modules:
-        print("Running bias analysis...")
-        if hasattr(pbar, "set_postfix"):
-            pbar.set_postfix(module="bias")
+        _progress("Running bias analysis...")
         results["bias"] = {
             "class_imbalance": class_imbalance_report(y_true),
         }
@@ -393,9 +382,7 @@ def _run_analysis_pipeline(
     # 5. Representation analysis module
     # ------------------------------------------------------------------
     if "representation" in active_modules and embeddings is not None:
-        print("Running representation analysis...")
-        if hasattr(pbar, "set_postfix"):
-            pbar.set_postfix(module="representation")
+        _progress("Running representation analysis...")
         results["representation"] = {
             "separability": embedding_separability(embeddings, y_true),
         }

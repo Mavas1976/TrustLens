@@ -157,8 +157,9 @@ def quick_analyze(
     TrustReport
         Populated report object with metrics, plots, and narrative summaries.
     """
-    if model is None or X is None or y is None:
-        logger.info(f"No model/data provided. Auto-loading {dataset} dataset for demo...")
+    using_demo = model is None or X is None or y is None
+    if using_demo:
+        logger.info("No model/data provided. Auto-loading %s dataset for demo...", dataset)
         if dataset == "iris":
             from sklearn.datasets import load_iris
             from sklearn.ensemble import RandomForestClassifier
@@ -186,8 +187,9 @@ def quick_analyze(
         else:
             raise ValueError("Supported demo datasets: 'iris', 'breast_cancer'")
 
-    print(f"\nTrustLens Analysis: {dataset}")
-    print(f"Status: Loading demo model and {dataset} validation data...")
+    if using_demo:
+        print(f"\nTrustLens Analysis: {dataset} (demo)")
+        print(f"Status: Loaded demo model and {dataset} validation data.")
 
     report = analyze(model=model, X=X, y_true=y, framework=framework, verbose=False)
 

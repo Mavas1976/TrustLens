@@ -34,6 +34,7 @@ from trustlens.visualization.style import (
     FIG_DEFAULTS,
     SEMANTIC_COLORS,
     apply_style,
+    save_figure,
 )
 
 # ---------------------------------------------------------------------------
@@ -146,7 +147,8 @@ def plot_summary_dashboard(
         _draw_subscores(ax_subs, trust_score)
 
         if save_path:
-            fig.savefig(
+            save_figure(
+                fig,
                 save_path,
                 dpi=FIG_DEFAULTS["savefig_dpi"],
                 bbox_inches="tight",

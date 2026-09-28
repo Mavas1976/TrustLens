@@ -117,3 +117,13 @@ def test_conformal_coverage_uses_encoded_labels():
         verbose=False,
     )
     assert report.results["calibration"]["conformal"]["marginal_coverage"] == pytest.approx(1.0)
+
+
+def test_verbose_false_prints_nothing(capsys):
+    """TL-26: progress output is gated by verbose."""
+    y, y_pred, y_prob = _binary()
+    analyze(None, None, y, y_pred=y_pred, y_prob=y_prob, verbose=False)
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    analyze(None, None, y, y_pred=y_pred, y_prob=y_prob, verbose=True)
+    assert "Running calibration analysis" in capsys.readouterr().out

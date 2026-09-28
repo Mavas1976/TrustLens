@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import matplotlib.pyplot as plt
 
-from trustlens.visualization.style import apply_style, get_categorical_colors
+from trustlens.visualization.style import apply_style, get_categorical_colors, save_figure
 
 
 def plot_class_distribution(
@@ -100,7 +100,8 @@ def plot_class_distribution(
         ax.grid(axis="y", alpha=0.35)
 
         if save_path:
-            fig.savefig(
+            save_figure(
+                fig,
                 save_path,
                 dpi=theme.fig_defaults["savefig_dpi"],
                 bbox_inches="tight",
