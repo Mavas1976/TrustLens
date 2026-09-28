@@ -580,3 +580,12 @@ def test_regression_miscoverage_ceiling_follows_the_documented_formula(shortfall
     r = regression_trust_score(_results(_ed(0.9), cov), Y)
     limit = 100 - 61 * (shortfall - 0.05) / 0.05
     assert r.score == min(r.base_score, int(np.floor(limit)))
+
+
+def test_legacy_two_level_results_without_weight_use_the_unusable_path():
+    """NF6-04: older multi-level results (no sharpness_weight) with two levels."""
+    cov = _cov_ml(0.12, sharpness_skill=None, worst=0.12)
+    cov["n_levels"] = 2
+    r = regression_trust_score(_results(_ed(0.9), cov, corr=None), Y)
+    assert "sharpness_weight" not in cov
+    assert r.informativeness_status == "unusable_uncertainty"

@@ -545,3 +545,18 @@ def test_sharpness_levels_are_weighted_by_calibration():
     assert out["n_calibrated_levels"] == 0
     assert out["sharpness_weight"] == pytest.approx(0.5)
     assert out["sharpness_skill"] is not None
+
+
+def test_sharpness_evidence_is_the_best_weighted_level():
+    """NF6-01: scoring evidence is max_i w_i * clip(1 - ratio_i, 0, 1)."""
+    y = np.linspace(0.0, 100.0, 1000)
+    spec = {0.5: (0.5, 10.0), 0.8: (0.725, 20.0)}  # weights 1 and 0.5
+    intervals = {lvl: _intervals_with_coverage(y, cov, hw) for lvl, (cov, hw) in spec.items()}
+    out = multilevel_interval_coverage(y, intervals, tolerance=0.05)
+
+    def term(lvl, hw, w):
+        ref = np.quantile(y, 0.5 + lvl / 2) - np.quantile(y, 0.5 - lvl / 2)
+        return w * min(max(1 - 2 * hw / ref, 0.0), 1.0)
+
+    expected = max(term(0.5, 10.0, 1.0), term(0.8, 20.0, 0.5))
+    assert out["sharpness_evidence"] == pytest.approx(expected, abs=1e-4)

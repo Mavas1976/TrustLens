@@ -93,6 +93,10 @@ the baseline but whose confidence ranks errors is limited to grade C, not
 blocked. The skill ramp spans at least 10 correctly predicted non-majority
 samples (its end is `max(0.10, 10 / n_non_majority)`), so one more correct
 prediction moves the ceiling by at most about 6 points, never from D to A.
+One exception: below ten non-majority samples, removing the *last* error also
+raises the end point to 59 (a model without errors counts as detecting all of
+them), so that step can be up to about 24 points (for example 39/D to 63/B
+with one non-majority sample); the result is still at most grade B.
 With fewer than 10 non-majority samples in the evaluation set even a perfect
 model cannot lift this ceiling completely: there is too little evidence of
 skill. A model without errors counts as fully detecting its errors (end point

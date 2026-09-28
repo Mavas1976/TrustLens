@@ -30,7 +30,7 @@ Checks whether the predicted uncertainty intervals are honest.
 ### 3. Uncertainty Informativeness
 Evaluates whether the uncertainty bounds are actually useful. A model can be perfectly calibrated by predicting the marginal distribution every time, but this provides no discriminative value.
 *   **Calibration-Conditioned Sharpness Proxy:** Evaluates how much tighter the model's intervals are compared to a naive climatology baseline (`1 - weighted_mean(model_width / climatology_width)`). Each level is weighted by its calibration: weight 1 within the tolerance (`|emp - tau| <= 0.05`), falling linearly to 0 at twice the tolerance. Over-confident, artificially narrow intervals are excluded and cannot inflate this score, and a level drifting across the tolerance changes the proxy gradually. The Uncertainty Informativeness sub-score is `max(sharpness_weight × sharpness score, correlation score)`, where `sharpness_weight` is the best level's weight and the correlation score applies only when `predicted_variance` is supplied (otherwise 0). Worse-calibrated intervals therefore never raise the score, and once no level is usable the dimension scores the correlation score, or 0.
-*   **Error-Variance Correlation:** A fallback metric that calculates the Spearman/Pearson correlation between the predicted variance and the realized absolute error.
+*   **Error-Variance Correlation:** Used when `predicted_variance` is supplied (the Uncertainty Informativeness sub-score takes the larger of this and the sharpness evidence); calculates the Spearman/Pearson correlation between the predicted variance and the realized absolute error.
 
 ## API Reference
 

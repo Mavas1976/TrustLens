@@ -300,7 +300,9 @@ def multilevel_interval_coverage(
     dict
       When intervals are supplied: ``ice``, ``sharpness_skill`` (``None`` if
       every level misses by at least twice the tolerance), ``sharpness_weight``
-      (the largest level weight, 0..1), ``n_levels``, ``n_calibrated_levels``,
+      (the largest level weight, 0..1), ``sharpness_evidence`` (the best
+      level's ``weight × clip(1 - width ratio, 0, 1)``, the monotone quantity
+      the Trust Score uses), ``n_levels``, ``n_calibrated_levels``,
       ``worst_calibration_error`` (most negative ``emp - tau``; drives the
       over-confidence blocker downstream), ``mean_interval_width``, a
       ``per_level`` table, a ``verdict`` and ``n_samples``. A single-level call
@@ -410,6 +412,15 @@ def multilevel_interval_coverage(
     # Weight of the best-calibrated admitted level: 1 when any level is within
     # the tolerance, falling to 0 as the last admitted level leaves the band.
     sharpness_weight = round(max(weights), 4) if weights else 0.0
+    # Scoring evidence (NF6-01): the best level's weighted sharpness,
+    # max_i w_i * clip(1 - ratio_i, 0, 1). Each level can only add evidence,
+    # so widening a level or losing calibration never raises it (the weighted
+    # mean above rises when a wide level drops out).
+    sharpness_evidence = (
+        round(max(w * float(np.clip(1.0 - r, 0.0, 1.0)) for w, r in zip(weights, ratios)), 4)
+        if ratios
+        else 0.0
+    )
 
     if ice <= tolerance:
         verdict = "well-calibrated"
@@ -424,6 +435,7 @@ def multilevel_interval_coverage(
         "n_levels": len(levels),
         "n_calibrated_levels": n_calibrated,
         "sharpness_weight": sharpness_weight,
+        "sharpness_evidence": sharpness_evidence,
         "worst_calibration_error": round(float(worst_cal_err), 4),
         "mean_interval_width": round(float(np.mean(widths)), 4),
         "per_level": per_level,

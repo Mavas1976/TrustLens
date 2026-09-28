@@ -765,10 +765,11 @@ def compute_trust_score(
 #                                      when multi-level intervals are supplied,
 #                                      else single-level PICP |calibration_error|,
 #                                      through a tolerance (regression analog of ECE).
-#   Uncertainty Informativeness 0.30   calibration-conditioned sharpness proxy vs a
-#                                      climatology reference (RFC #155) when multi-
-#                                      level intervals are supplied, else max(pearson,
-#                                      spearman) of predicted uncertainty vs error.
+#   Uncertainty Informativeness 0.30   the larger of the calibration-weighted
+#                                      sharpness evidence vs a climatology reference
+#                                      (RFC #155; interval mappings) and max(pearson,
+#                                      spearman) of predicted uncertainty vs error
+#                                      (predicted variance) - methodology 2.2.
 #
 # Point-prediction-only reports score on Accuracy alone (the other two are
 # redistributed away), exactly as a no-embeddings classification report drops
@@ -907,25 +908,28 @@ def _informativeness_from_sharpness(coverage: dict, fallback: float | None = Non
     Uncertainty-informativeness sub-score (0–100) from the calibration-conditioned
     sharpness proxy (RFC #155).
 
-    ``max(w × 100 × clip(sharpness_skill, 0, 1), fallback)`` with ``w`` the
-    ``sharpness_weight`` (1 when a level is within the calibration tolerance,
-    0 at twice it) and ``fallback`` the correlation score or 0 — rewards
-    intervals sharper than the climatology baseline *among well-calibrated levels*, the
-    CRPS-Resolution analog of the correlation-based score. Preferred over the
-    error-variance correlation when multi-level intervals are available.
+    ``max(100 × sharpness_evidence, fallback)``, where ``sharpness_evidence`` is
+    the best level's ``w × clip(1 − width ratio, 0, 1)`` (``w`` = 1 within the
+    calibration tolerance, 0 at twice it) and ``fallback`` the error-variance
+    correlation score when predicted variance was supplied, else 0. Rewards
+    intervals sharper than the climatology baseline among well-calibrated
+    levels, the CRPS-Resolution analog of the correlation-based score; the
+    stronger of the two pieces of evidence counts (methodology 2.2).
     """
-    skill = float(coverage.get("sharpness_skill") or 0.0)
-    # Weighted by the best level's calibration weight (NF3-02). As the last
-    # usable level leaves the calibration band the score moves continuously to
-    # what applies once no level is usable: the error-variance correlation
-    # score when predicted variance was supplied (``fallback``), else the
-    # "unusable uncertainty" 0 (NF4-01). Older results lack the weight.
-    weight = float(np.clip(float(coverage.get("sharpness_weight", 1.0)), 0.0, 1.0))
-    sharpness = 100.0 * float(np.clip(skill, 0.0, 1.0))
-    # The better of the two pieces of evidence (NF5-03): monotone in the
-    # calibration weight, so worse-calibrated intervals never raise the score,
-    # and equal to the correlation score once no level is usable.
-    return max(weight * sharpness, fallback or 0.0)
+    if "sharpness_evidence" in coverage:
+        # Best level's weight × sharpness (NF6-01): monotone in every level's
+        # calibration and width.
+        sharpness = 100.0 * float(np.clip(float(coverage["sharpness_evidence"]), 0.0, 1.0))
+    else:
+        # Older results: weighted-mean sharpness scaled by the best weight
+        # (NF3-02), or the plain proxy before that.
+        skill = float(coverage.get("sharpness_skill") or 0.0)
+        weight = float(np.clip(float(coverage.get("sharpness_weight", 1.0)), 0.0, 1.0))
+        sharpness = weight * 100.0 * float(np.clip(skill, 0.0, 1.0))
+    # The stronger of the two pieces of evidence (NF5-03): worse-calibrated
+    # intervals never raise the score, and once no level is usable the
+    # error-variance correlation score applies (``fallback``), else 0.
+    return max(sharpness, fallback or 0.0)
 
 
 def _reg_metric_present(metric: dict | None) -> bool:
@@ -1036,9 +1040,9 @@ def regression_trust_score(
         )
         sub_scores["interval_calibration"] = _interval_calibration_score(coverage)
 
-    # Uncertainty Informativeness: prefer the calibration-conditioned sharpness
-    # proxy (multi-level intervals, RFC #155); fall back to the error-variance
-    # correlation when only predicted variance is available.
+    # Uncertainty Informativeness: the stronger of the calibration-weighted
+    # sharpness evidence (interval mappings, RFC #155) and the error-variance
+    # correlation (predicted variance); either alone when only one is supplied.
     sharpness_skill = coverage.get("sharpness_skill") if coverage_present else None
     n_interval_levels = int(coverage.get("n_levels", 0)) if coverage_present else 0
     n_calibrated_levels = int(coverage.get("n_calibrated_levels", 0)) if coverage_present else 0
@@ -1064,8 +1068,9 @@ def regression_trust_score(
         # dropping the dimension and redistributing its 0.30 weight: "the
         # supplied uncertainty delivered zero usable resolution" is a real,
         # scorable failure, distinct from "no uncertainty was provided at all"
-        # (which stays on the redistribute path). Scoped to the multi-level path
-        # (``n_levels >= 2``): the single-level PICP path has no
+        # (which stays on the redistribute path). Applies to every mapping from
+        # multilevel_interval_coverage, including a single level (NF5-01), and to
+        # older multi-level results; a legacy single-level PICP dict has no
         # "we tried and it was unusable" signal and keeps redistributing.
         sub_scores["uncertainty_informativeness"] = 0.0
         informativeness_status = "unusable_uncertainty"

@@ -343,5 +343,9 @@ def test_perfect_model_is_never_below_the_same_model_with_a_miss():
                 0.02, None if missed == 0 else 1.0, missed / n, accuracy=accuracy, baseline=baseline
             )
             results["failure"]["n_samples"] = n
-            scores.append(compute_trust_score(results).score)
+            ts = compute_trust_score(results)
+            scores.append(ts.score)
+            if missed == 0 and n_minority < 10:
+                # NF6-04: the limit names the thin evidence, not "barely beats".
+                assert any(f"Only {n_minority} non-majority" in c for c in ts.caps_applied)
         assert scores == sorted(scores, reverse=True), (n, n_minority, scores)

@@ -136,3 +136,34 @@ def test_informativeness_blends_into_the_correlation_score():
     assert min(errors) < 0.05 and max(errors) > 0.10
     # Old behaviour jumped 12 points at the band edge; now every step is small.
     assert max(np.abs(np.diff(scores))) <= 4, scores
+
+
+def test_widening_an_over_covering_level_never_raises_the_score():
+    """NF6-01: a wide level dropping out of the sharpness proxy must not help."""
+    from scipy.stats import norm
+
+    y = Y_TRUE + 0.5 * NOISE
+    y_pred = Y_TRUE
+    q_lo, q_hi = np.quantile(y, [0.1, 0.9])
+    centre, half = (q_lo + q_hi) / 2, (q_hi - q_lo) / 2
+    z50 = norm.ppf(0.75)
+    scores = []
+    for k in np.linspace(1.0, 1.6, 61):
+        intervals = {
+            0.5: (y_pred - 0.5 * z50, y_pred + 0.5 * z50),
+            0.8: (np.full(y.size, centre - half * k), np.full(y.size, centre + half * k)),
+        }
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            report = analyze(
+                None,
+                None,
+                y,
+                y_pred=y_pred,
+                task="regression",
+                prediction_intervals=intervals,
+                verbose=False,
+            )
+        scores.append(report.trust_score.score)
+    rises = [b - a for a, b in zip(scores, scores[1:]) if b > a]
+    assert not rises, scores
