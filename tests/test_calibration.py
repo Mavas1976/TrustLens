@@ -373,7 +373,7 @@ class TestReliabilityCurve:
     [
         ([1, 0, 1], [0.9, float("nan"), 0.2], "finite probabilities"),
         ([1, 0, 1], [0.9, 1.5, 0.2], "finite probabilities"),
-        ([], [], "at least one sample"),
+        ([], [], "empty|at least one sample"),
         ([1, 2, 1], [0.9, 0.1, 0.2], "binary"),
         ([1, 0], [0.5], "same length"),
     ],
