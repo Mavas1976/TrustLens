@@ -236,7 +236,10 @@ def test_zero_weight_on_every_assessed_dimension_is_rejected():
 
 def documented_no_skill_ceiling(accuracy, baseline, auroc, n=None):
     skill = (accuracy - baseline) / (1 - baseline)
-    floor = 39.0 if auroc is None else 39 + 20 * min(max((auroc - 0.6) / 0.1, 0), 1)
+    if accuracy >= 1:
+        floor = 59.0  # no errors: full detection
+    else:
+        floor = 39.0 if auroc is None else 39 + 20 * min(max((auroc - 0.6) / 0.1, 0), 1)
     ramp_end = 0.10 if n is None else max(0.10, 10 / (n * (1 - baseline)))
     return documented_ceiling(ramp_end - skill, 0.0, ramp_end, floor)
 
@@ -314,12 +317,31 @@ def test_no_skill_ramp_spans_at_least_ten_minority_samples(n, baseline, correct)
     ts = compute_trust_score(results)
     limit = documented_no_skill_ceiling(accuracy, baseline, 0.5, n=n)
     assert ts.score == min(ts.base_score, int(np.floor(limit)))
-    assert ts.score <= 39 + 61 * correct / 10 + 1  # never D to A (NF4-02)
+    # One more correct prediction moves the ceiling by at most 61/10 (NF4-02).
+    previous = documented_no_skill_ceiling(accuracy - 1 / n, baseline, 0.5, n=n)
+    assert limit - previous <= 61 / 10 + 1e-9 or accuracy >= 1
 
 
 def test_legacy_results_take_the_sample_count_from_class_counts():
     """NF4-03: without n_samples the ramp still spans ten minority samples."""
-    results = _results(0.02, 0.5, 1 - 0.991, accuracy=0.991, baseline=0.99)
-    results["bias"] = {"class_imbalance": {"class_counts": {0: 1980, 1: 20}}}
+    results = _results(0.02, 0.9, 1 - 0.62, accuracy=0.62, baseline=0.6)
+    results["bias"] = {"class_imbalance": {"class_counts": {0: 60, 1: 40}}}
     ts = compute_trust_score(results)
-    assert ts.score <= 39 + 61 * 2 / 10 + 1
+    limit = documented_no_skill_ceiling(0.62, 0.6, 0.9, n=100)  # n = sum of the counts
+    assert ts.base_score > limit
+    assert ts.score == int(np.floor(limit))
+
+
+def test_perfect_model_is_never_below_the_same_model_with_a_miss():
+    """NF5-02: with few minority samples, one more error never raises the score."""
+    for n, n_minority in ((500, 1), (500, 2), (1000, 3), (2000, 5), (2000, 9)):
+        baseline = 1 - n_minority / n
+        scores = []
+        for missed in range(n_minority + 1):
+            accuracy = 1 - missed / n
+            results = _results(
+                0.02, None if missed == 0 else 1.0, missed / n, accuracy=accuracy, baseline=baseline
+            )
+            results["failure"]["n_samples"] = n
+            scores.append(compute_trust_score(results).score)
+        assert scores == sorted(scores, reverse=True), (n, n_minority, scores)

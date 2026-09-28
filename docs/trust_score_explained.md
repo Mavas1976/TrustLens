@@ -95,7 +95,10 @@ samples (its end is `max(0.10, 10 / n_non_majority)`), so one more correct
 prediction moves the ceiling by at most about 6 points, never from D to A.
 With fewer than 10 non-majority samples in the evaluation set even a perfect
 model cannot lift this ceiling completely: there is too little evidence of
-skill.
+skill. A model without errors counts as fully detecting its errors (end point
+59), so the limit for a perfect model is `59 + 41 × n_non_majority / 10`: 63
+with one non-majority sample, 79 with five, no limit from ten. Results that
+carry neither `n_samples` nor class counts use the 0.10 ramp.
 
 Below 100 samples the overconfidence estimate is too noisy to block on (about
 20% false alarms at n = 30 for a perfectly calibrated model), so its ceiling
@@ -109,8 +112,10 @@ Both regression blockers have ceiling ramps as well: the ceiling falls from 100
 to 39 as the skill (R²) drops from 0.10 to 0, and as the coverage shortfall
 grows from 0.05 to 0.10. Uncertainty informativeness from multi-level intervals
 is weighted by how well the best level is calibrated (weight 1 within 0.05 of
-nominal coverage, 0 at 0.10); the remaining weight goes to the error-variance
-correlation score when `predicted_variance` is supplied, else to 0.
+nominal coverage, 0 at 0.10). With `predicted_variance` the sub-score is the
+larger of that weighted sharpness score and the error-variance correlation
+score, so worse-calibrated intervals never raise the score. Intervals from a
+multi-level mapping (including a single level) that are all unusable score 0.
 
 ### Caps and ceilings (grade C, score ≤ 59)
 

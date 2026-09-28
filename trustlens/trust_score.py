@@ -598,7 +598,10 @@ def compute_trust_score(
             # whose scores never cross 0.5) lifts the floor from 39 towards 59:
             # the decisions lack skill, the model may not.
             detection = 0.0
-            if auroc is not None:
+            if accuracy >= 1.0:
+                # No errors: nothing to detect, as in the failure sub-score (NF5-02).
+                detection = 1.0
+            elif auroc is not None:
                 detection = float(
                     np.clip(
                         (float(auroc) - _NO_SKILL_AUROC) / (_NO_SKILL_AUROC_FULL - _NO_SKILL_AUROC),
@@ -608,6 +611,7 @@ def compute_trust_score(
                 )
             floor = _BLOCKED_SCORE_CAP + (_CAPPED_SCORE_CAP - _BLOCKED_SCORE_CAP) * detection
             ramp_end = _NO_SKILL_RAMP_END
+            n_minority = 0.0
             n_eval = failure.get("n_samples", calibration.get("n_samples"))
             if n_eval is None:
                 # Results saved before n_samples was recorded (NF4-03).
@@ -628,6 +632,11 @@ def compute_trust_score(
                     reason = (
                         f"Decisions do not beat the majority-class baseline (accuracy "
                         f"{accuracy:.3f} vs {baseline:.3f}); review the decision threshold"
+                    )
+                elif ramp_end > _NO_SKILL_RAMP_END:
+                    reason = (
+                        f"Only {n_minority:.0f} non-majority sample(s) in the evaluation set: "
+                        "too little evidence of skill"
                     )
                 else:
                     reason = (
@@ -898,7 +907,7 @@ def _informativeness_from_sharpness(coverage: dict, fallback: float | None = Non
     Uncertainty-informativeness sub-score (0–100) from the calibration-conditioned
     sharpness proxy (RFC #155).
 
-    ``w × 100 × clip(sharpness_skill, 0, 1) + (1 − w) × fallback`` with ``w`` the
+    ``max(w × 100 × clip(sharpness_skill, 0, 1), fallback)`` with ``w`` the
     ``sharpness_weight`` (1 when a level is within the calibration tolerance,
     0 at twice it) and ``fallback`` the correlation score or 0 — rewards
     intervals sharper than the climatology baseline *among well-calibrated levels*, the
@@ -913,7 +922,10 @@ def _informativeness_from_sharpness(coverage: dict, fallback: float | None = Non
     # "unusable uncertainty" 0 (NF4-01). Older results lack the weight.
     weight = float(np.clip(float(coverage.get("sharpness_weight", 1.0)), 0.0, 1.0))
     sharpness = 100.0 * float(np.clip(skill, 0.0, 1.0))
-    return weight * sharpness + (1.0 - weight) * (fallback or 0.0)
+    # The better of the two pieces of evidence (NF5-03): monotone in the
+    # calibration weight, so worse-calibrated intervals never raise the score,
+    # and equal to the correlation score once no level is usable.
+    return max(weight * sharpness, fallback or 0.0)
 
 
 def _reg_metric_present(metric: dict | None) -> bool:
@@ -1041,7 +1053,9 @@ def regression_trust_score(
     elif corr_present:
         sub_scores["uncertainty_informativeness"] = _uncertainty_informativeness_score(corr)
         informativeness_status = "present"
-    elif n_interval_levels >= 2 and n_calibrated_levels == 0:
+    elif n_calibrated_levels == 0 and (
+        n_interval_levels >= 2 or (n_interval_levels >= 1 and "sharpness_weight" in coverage)
+    ):
         # RFC #155 follow-up (PR #161 review): multi-level intervals WERE
         # supplied, but every level fell outside the calibration band, so
         # ``sharpness_skill`` is None because the uncertainty was *unusable*,

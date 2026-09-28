@@ -420,12 +420,18 @@ class TestMultilevelIntervalCalibrationRFC155:
         assert _informativeness_from_sharpness({"sharpness_skill": -0.3}) == 0.0
         assert _informativeness_from_sharpness({"sharpness_skill": None}) == 0.0
 
-    def test_informativeness_uses_proxy_not_correlation_when_intervals_present(self):
-        # sharpness proxy present + a (strong) correlation also present -> proxy wins.
+    def test_informativeness_takes_the_stronger_evidence(self):
+        # Methodology 2.2 (NF5-03): informativeness is max(w * sharpness, correlation).
+        # "Proxy always wins" plus "correlation when no level is usable" made
+        # worse-calibrated intervals raise the score, so the stronger evidence counts.
         r = regression_trust_score(
             _results(_ed(0.9), _cov_ml(0.0, sharpness_skill=0.6), _corr(0.95)), Y
         )
-        assert r.sub_scores["uncertainty_informativeness"] == pytest.approx(60.0, abs=0.5)
+        assert r.sub_scores["uncertainty_informativeness"] == pytest.approx(95.0, abs=0.5)
+        r = regression_trust_score(
+            _results(_ed(0.9), _cov_ml(0.0, sharpness_skill=0.9), _corr(0.5)), Y
+        )
+        assert r.sub_scores["uncertainty_informativeness"] == pytest.approx(90.0, abs=0.5)
 
     def test_proxy_path_suppresses_weak_correlation_penalty(self):
         # On the proxy path the weak-correlation composite penalty must NOT fire,
@@ -528,3 +534,49 @@ def test_informativeness_scales_with_the_sharpness_weight():
         ts = regression_trust_score(_results(_ed(0.9), cov), Y)
         subs.append(ts.sub_scores["uncertainty_informativeness"])
     assert subs == pytest.approx([60.0, 30.0, 6.0])
+
+
+def test_unusable_single_level_multilevel_output_scores_zero():
+    """NF5-01: a single level from multilevel_interval_coverage that is too far
+    off nominal scores 0.0 instead of dropping the dimension (which raised the score)."""
+    cov = {
+        **_cov_ml(0.12, sharpness_skill=None, worst=0.12),
+        "n_levels": 1,
+        "sharpness_weight": 0.0,
+    }
+    r = regression_trust_score(_results(_ed(0.9), cov, corr=None), Y)
+    assert r.sub_scores["uncertainty_informativeness"] == 0.0
+    assert r.informativeness_status == "unusable_uncertainty"
+
+
+def test_unusable_two_level_output_scores_zero():
+    """NF5-06: the unusable path covers two levels, not only three or more."""
+    cov = {
+        **_cov_ml(0.12, sharpness_skill=None, worst=0.12),
+        "n_levels": 2,
+        "sharpness_weight": 0.0,
+    }
+    r = regression_trust_score(_results(_ed(0.9), cov, corr=None), Y)
+    assert r.informativeness_status == "unusable_uncertainty"
+
+
+@pytest.mark.parametrize("skill", [0.02, 0.05, 0.08])
+def test_regression_skill_ceiling_follows_the_documented_formula(skill):
+    """NF5-06: ceiling 39 + 61 * skill / 0.10 below a skill of 0.10."""
+    # Tiny accuracy weight so the base score sits above the ceiling.
+    weights = {"accuracy": 0.01, "interval_calibration": 0.5, "uncertainty_informativeness": 0.49}
+    r = regression_trust_score(
+        _results(_ed(skill), _cov_ml(0.0, sharpness_skill=0.9)), Y, weights=weights
+    )
+    limit = 39 + 61 * skill / 0.10
+    assert r.score == min(r.base_score, int(np.floor(limit)))
+    assert r.base_score > limit
+
+
+@pytest.mark.parametrize("shortfall", [0.06, 0.08, 0.095])
+def test_regression_miscoverage_ceiling_follows_the_documented_formula(shortfall):
+    """NF5-06: ceiling 100 - 61 * (shortfall - 0.05) / 0.05 between 0.05 and 0.10."""
+    cov = _cov_ml(0.0, sharpness_skill=0.9, worst=-shortfall)
+    r = regression_trust_score(_results(_ed(0.9), cov), Y)
+    limit = 100 - 61 * (shortfall - 0.05) / 0.05
+    assert r.score == min(r.base_score, int(np.floor(limit)))
