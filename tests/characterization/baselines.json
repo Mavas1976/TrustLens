@@ -245,9 +245,9 @@
       "representation": {
         "separability": {
           "silhouette_score": 0.0015,
-          "within_class_distance": 3.6938,
+          "within_class_distance": 3.8031,
           "between_class_distance": 3.815,
-          "separability_ratio": 1.0328,
+          "separability_ratio": 1.0031,
           "n_samples_used": 100,
           "embedding_dim": 8
         }
@@ -530,9 +530,9 @@
       "representation": {
         "separability": {
           "silhouette_score": 0.0015,
-          "within_class_distance": 3.6938,
+          "within_class_distance": 3.8031,
           "between_class_distance": 3.815,
-          "separability_ratio": 1.0328,
+          "separability_ratio": 1.0031,
           "n_samples_used": 100,
           "embedding_dim": 8
         }

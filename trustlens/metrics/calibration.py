@@ -94,8 +94,8 @@ def brier_score(
     >>> from trustlens.metrics.calibration import brier_score
     >>> y_true = np.array([1, 0, 1, 1, 0])
     >>> y_prob = np.array([0.9, 0.1, 0.8, 0.7, 0.3])
-    >>> brier_score(y_true, y_prob)
-    0.036
+    >>> float(round(brier_score(y_true, y_prob), 3))
+    0.048
     """
     y_true = np.asarray(y_true, dtype=float)
     y_prob = np.asarray(y_prob, dtype=float)

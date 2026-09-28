@@ -76,7 +76,7 @@ class TextReportMixin(ReportBase):
         ts = self.trust_score
         print("\n[ SCORE METHODOLOGY ]")
         weights_str = " + ".join(
-            [f"{k.capitalize()} ({int(v * 100)}%)" for k, v in ts.weights_used.items()]
+            [f"{k.capitalize()} ({round(v * 100)}%)" for k, v in ts.weights_used.items()]
         )
         print(f"  Formula     : {weights_str}")
         for line in _methodology_lines(ts):
@@ -323,7 +323,7 @@ class TextReportMixin(ReportBase):
         # Text methodology lines
         lines.append("\n[ SCORE METHODOLOGY ]")
         weights_str = " + ".join(
-            [f"{k.capitalize()} ({int(v * 100)}%)" for k, v in ts.weights_used.items()]
+            [f"{k.capitalize()} ({round(v * 100)}%)" for k, v in ts.weights_used.items()]
         )
         lines.append(f"  Formula     : {weights_str}")
         lines.extend(_methodology_lines(ts))

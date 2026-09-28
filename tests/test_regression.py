@@ -490,3 +490,23 @@ def test_regression_module_exports_match_all():
         "crps_decomposition",
         "error_variance_correlation",
     }
+
+
+def test_crps_decomposition_counts_observations_outside_the_intervals():
+    """TL-16: an observation far outside the intervals dominates CRPS."""
+    from scipy.stats import norm
+
+    from trustlens.metrics.regression import crps_decomposition, crps_from_intervals
+
+    y = np.full(1, 100.0)
+    zeros = np.zeros(1)
+    intervals = {
+        level: (zeros + norm.ppf((1 - level) / 2), zeros + norm.ppf((1 + level) / 2))
+        for level in np.linspace(0.1, 0.95, 19)
+    }
+    decomposed = crps_decomposition(y, intervals)
+    reference = crps_from_intervals(y, intervals)["mean_crps"]
+    assert decomposed["crps"] == pytest.approx(reference, rel=0.02)
+    assert decomposed["reliability"] + decomposed["crps_potential"] == pytest.approx(
+        decomposed["crps"]
+    )

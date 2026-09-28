@@ -501,9 +501,9 @@ def crps_from_intervals(
     Limitations
     -----------
     The estimate is *grid-dependent*: it integrates only over the quantile levels
-    the intervals span, so a coarse or narrow grid biases CRPS upward (the tails
-    beyond the outermost levels are truncated). Against a closed-form Gaussian a
-    3-level grid runs ~17% high while a 19-level grid is <1%. ``n_quantile_levels``
+    the intervals span, so a coarse or narrow grid biases CRPS *downward* (the
+    tails beyond the outermost levels are truncated). Against a closed-form
+    Gaussian a 3-level grid runs about 11% low while a 19-level grid is within 1%. ``n_quantile_levels``
     and ``quantile_level_span`` are returned so the density is visible; prefer a
     dense grid (>= ~9 interval levels) for a trustworthy value. Quantile crossing
     (non-nested intervals) is repaired by sorting each sample's quantiles ascending
@@ -601,6 +601,13 @@ def _hersbach_terms(
       * ``crps_potential  = sum_i g_i o_i (1 - o_i)``  (best CRPS at this resolution)
       * ``crps_recon      = sum_i (abar_i p_i^2 + bbar_i (1 - p_i)^2)``
 
+    Observations outside the outermost quantiles are covered by Hersbach's two
+    outlier segments (TL-16): below the lowest quantile the forecast level is
+    ``alpha_0`` with the whole gap lying above the observation; above the highest
+    it is ``alpha_last`` with the gap below. Without them an observation far
+    outside the intervals contributed almost nothing (CRPS 1.0 instead of about
+    94 for ``y = 100`` against N(0, 1) intervals).
+
     Returns ``(reliability, crps_potential, crps_recon)`` with the exact algebraic
     identity ``crps_recon == reliability + crps_potential``.
     """
@@ -618,7 +625,13 @@ def _hersbach_terms(
     crps_potential = float(np.sum(g * o * (1.0 - o)))
     pc = p[:, np.newaxis]
     crps_recon = float(np.mean(np.sum(below * pc**2 + above * (1.0 - pc) ** 2, axis=0)))
-    return reliability, crps_potential, crps_recon
+
+    # Outlier segments: o is 1 below the lowest quantile and 0 above the highest,
+    # so they add only to reliability (and the reconstruction), never to potential.
+    low_gap = float(np.mean(np.clip(quantiles[0] - y_true, 0.0, None)))
+    high_gap = float(np.mean(np.clip(y_true - quantiles[-1], 0.0, None)))
+    tails = low_gap * (1.0 - alphas[0]) ** 2 + high_gap * alphas[-1] ** 2
+    return reliability + tails, crps_potential, crps_recon + tails
 
 
 def _empirical_climatology_quantiles(y_true: np.ndarray, alphas: np.ndarray) -> np.ndarray:

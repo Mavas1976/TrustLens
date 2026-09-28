@@ -104,6 +104,9 @@ deployment verdict is `INSUFFICIENT_EVIDENCE`.
 
 ## Grade Interpretation
 
+Grades are assigned to the reported (rounded, integer) score, so a raw
+weighted score of 79.5 rounds to 80 and receives an A.
+
 | Score | Grade | Meaning |
 |---|---|---|
 | 80–100 | A | High trust, no critical issues detected |

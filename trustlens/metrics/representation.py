@@ -126,8 +126,11 @@ def embedding_separability(
 
         if len(in_cls) >= 2:
             pairs = min(max_pairs, len(in_cls) * (len(in_cls) - 1) // 2)
+            # Sample distinct pairs (i != j): self-pairs have distance 0 and
+            # biased the within-class distance low (TL-29).
             idx_a = rng.integers(0, len(in_cls), pairs)
-            idx_b = rng.integers(0, len(in_cls), pairs)
+            idx_b = rng.integers(0, len(in_cls) - 1, pairs)
+            idx_b = idx_b + (idx_b >= idx_a)
             diff = in_cls[idx_a] - in_cls[idx_b]
             within_dists.extend(np.linalg.norm(diff, axis=1).tolist())
 
@@ -197,6 +200,15 @@ def centered_kernel_alignment(
         raise ValueError(
             f"X and Y must have the same number of samples, got {X.shape[0]} and {Y.shape[0]}."
         )
+
+    # CKA is scale-invariant; normalising first keeps the absolute degeneracy
+    # threshold below from zeroing small-magnitude embeddings (TL-29).
+    x_norm = float(np.linalg.norm(X))
+    y_norm = float(np.linalg.norm(Y))
+    if x_norm == 0.0 or y_norm == 0.0:
+        return 0.0
+    X = X / x_norm
+    Y = Y / y_norm
 
     # Linear kernel matrices
     K = X @ X.T
