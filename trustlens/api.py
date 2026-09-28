@@ -24,10 +24,33 @@ from typing import Any, Optional
 import numpy as np
 
 from trustlens.backends.registry import get_resolver
+from trustlens.core.inputs import check_lengths, prepare_inputs
 from trustlens.core.pipeline import _run_analysis_pipeline, _run_regression_pipeline
 from trustlens.report import TrustReport
 
 logger = logging.getLogger(__name__)
+
+
+def _infer_class_labels(
+    model: Any, y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray
+) -> Optional[np.ndarray]:
+    """Recover the probability-column labels when the user supplied y_pred and y_prob.
+
+    Uses ``model.classes_`` when available. Otherwise, when the labels are not
+    already the column indices 0..K-1, the sorted distinct labels of y_true and
+    y_pred are used if their count matches the number of columns (the sklearn
+    convention); a clear error is raised later if that is not possible (TL-13).
+    """
+    classes = getattr(model, "classes_", None)
+    if classes is not None and len(classes) == y_prob.shape[1]:
+        return np.asarray(classes)
+    labels = np.unique(np.concatenate([np.asarray(y_true), np.asarray(y_pred)]))
+    if labels.dtype.kind in "iu" and labels.min() >= 0 and labels.max() < y_prob.shape[1]:
+        return None  # already column indices
+    if len(labels) == y_prob.shape[1]:
+        logger.info("Inferred class_labels %s from the sorted distinct labels.", labels.tolist())
+        return labels
+    return None
 
 
 def _estimator_type(model: Any) -> Optional[str]:
@@ -299,14 +322,24 @@ def analyze(
     >>> # Display results
     >>> report.show()
     """
+    # ------------------------------------------------------------------
+    # 0. Route by task, then validate every input once (TL-12). Regression
+    #    skips the classification backend and the classification modules.
+    # ------------------------------------------------------------------
+    task_type = _detect_task(y_true, task, model=model, y_prob=y_prob)
+    inputs = prepare_inputs(
+        y_true,
+        X=X,
+        y_pred=y_pred,
+        y_prob=y_prob,
+        sensitive_features=sensitive_features,
+        embeddings=embeddings,
+        task=task_type,
+    )
+    y_true, y_pred, y_prob = inputs.y_true, inputs.y_pred, inputs.y_prob
     if len(y_true) < 30:
         logger.warning("Small dataset (n < 30) detected. Metrics may be unreliable.")
 
-    # ------------------------------------------------------------------
-    # 0. Route by task. Regression skips the classification backend (which
-    #    resolves class probabilities) and the classification modules.
-    # ------------------------------------------------------------------
-    task_type = _detect_task(y_true, task, model=model, y_prob=y_prob)
     if task_type == "regression":
         if y_pred is None:
             if model is None or not hasattr(model, "predict"):
@@ -315,12 +348,13 @@ def analyze(
                     "or a model that exposes .predict(X)."
                 )
             y_pred_resolved = np.asarray(model.predict(X))
+            check_lengths(len(y_true), **{"model.predict(X)": y_pred_resolved})
         else:
-            y_pred_resolved = np.asarray(y_pred)
+            y_pred_resolved = y_pred
         return _run_regression_pipeline(
             model=model,
             X=X,
-            y_true=np.asarray(y_true),
+            y_true=y_true,
             y_pred=y_pred_resolved,
             prediction_intervals=prediction_intervals,
             predicted_variance=predicted_variance,
@@ -335,6 +369,8 @@ def analyze(
     # Short-circuit if both overrides are provided
     if y_pred is not None and y_prob is not None:
         framework = "manual"
+        if class_labels is None:
+            class_labels = _infer_class_labels(model, y_true, y_pred, y_prob)
 
     resolver = get_resolver(model, framework=framework)
     resolved_class_labels = np.asarray(class_labels) if class_labels is not None else None
@@ -345,6 +381,8 @@ def analyze(
         y_prob=y_prob,
         class_labels=resolved_class_labels,
     )
+
+    check_lengths(len(y_true), resolved_y_pred=bundle.y_pred, resolved_y_prob=bundle.y_prob)
 
     # ------------------------------------------------------------------
     # 2. Delegate to Core Pipeline
@@ -358,8 +396,8 @@ def analyze(
         framework=bundle.framework,
         backend_metadata=bundle.metadata,
         class_labels=bundle.class_labels,
-        embeddings=embeddings,
-        sensitive_features=sensitive_features,
+        embeddings=inputs.embeddings,
+        sensitive_features=inputs.sensitive_features,
         modules=modules,
         plugins=plugins,
         y_pred_sets=y_pred_sets,

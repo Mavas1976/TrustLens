@@ -133,7 +133,21 @@ def _encode_labels_for_probability_columns(
         except KeyError as exc:
             raise ValueError("y_true contains labels that are missing from class_labels.") from exc
 
-    return y_true.astype(int)
+    hint = "Pass class_labels=[...] in the order of the probability columns (e.g. model.classes_)."
+    try:
+        encoded = np.asarray(y_true).astype(int)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"y_true has non-integer labels. {hint}") from exc
+    if encoded.size and (
+        encoded.min() < 0
+        or encoded.max() >= n_classes
+        or not np.array_equal(encoded, np.asarray(y_true))
+    ):
+        raise ValueError(
+            f"y_true labels do not index the {n_classes} probability columns (0..{n_classes - 1}). "
+            + hint
+        )
+    return encoded
 
 
 def _run_analysis_pipeline(
@@ -268,8 +282,24 @@ def _run_analysis_pipeline(
                 pbar.set_postfix(module="conformal")
             calibration_block = results.setdefault("calibration", {})
             try:
+                # Prediction sets index the probability columns, so encode the
+                # labels the same way (TL-13): labels 1..K or strings otherwise
+                # count against the wrong column.
+                n_set_classes = (
+                    int(y_prob.shape[1])
+                    if y_prob is not None and y_prob.ndim == 2
+                    else (len(class_labels) if class_labels is not None else None)
+                )
+                conformal_y = (
+                    _encode_labels_for_probability_columns(y_true, n_set_classes, class_labels)
+                    if n_set_classes is not None
+                    else y_true
+                )
                 calibration_block["conformal"] = conformal_diagnostics(
-                    y_true, y_pred_sets, nominal_coverage=nominal_coverage
+                    conformal_y,
+                    y_pred_sets,
+                    nominal_coverage=nominal_coverage,
+                    n_classes=n_set_classes,
                 )
             except (ValueError, TypeError) as e:
                 # Malformed sets (length mismatch, all-empty, ambiguous 0/1 list,
