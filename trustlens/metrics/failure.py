@@ -13,6 +13,8 @@ Metrics implemented
 
 from __future__ import annotations
 
+from typing import Optional
+
 import numpy as np
 
 __all__ = [
@@ -57,8 +59,8 @@ def misclassification_summary(
 
     Examples
     --------
-    >>> summary = misclassification_summary(y_true, y_pred, y_prob)
-    >>> print(summary[1]["error_rate"]) # error rate for class 1
+    >>> summary = misclassification_summary(y_true, y_pred, y_prob)  # doctest: +SKIP
+    >>> print(summary[1]["error_rate"]) # error rate for class 1  # doctest: +SKIP
     """
     y_true = np.asarray(y_true)
     y_pred = np.asarray(y_pred)
@@ -153,8 +155,8 @@ def confidence_gap(
 
     Examples
     --------
-    >>> gap_data = confidence_gap(y_true, y_pred, y_prob)
-    >>> print(f"Confidence gap: {gap_data['gap']:.3f}")
+    >>> gap_data = confidence_gap(y_true, y_pred, y_prob)  # doctest: +SKIP
+    >>> print(f"Confidence gap: {gap_data['gap']:.3f}")  # doctest: +SKIP
     """
     y_true = np.asarray(y_true)
     y_pred = np.asarray(y_pred)
@@ -191,3 +193,51 @@ def confidence_gap(
         "n_correct": int(correct_mask.sum()),
         "n_incorrect": int((~correct_mask).sum()),
     }
+
+
+def error_detection_auroc(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    y_prob: np.ndarray,
+) -> Optional[float]:
+    """
+    AUROC of top-label confidence for separating correct from wrong predictions.
+
+    What it measures
+    ----------------
+    The probability that a randomly chosen correct prediction has a higher
+    confidence than a randomly chosen wrong one. 1.0 means confidence ranks
+    every error below every correct prediction; 0.5 means confidence carries no
+    information about errors.
+
+    Why it matters
+    --------------
+    Unlike the mean confidence gap, AUROC is scale-free: its attainable range
+    does not shrink with the number of classes or with accuracy, so a
+    well-calibrated, accurate model is not penalised (ADR-001, TL-01).
+
+    Returns
+    -------
+    float or None
+      AUROC in [0, 1], or ``None`` when all predictions are correct or all are
+      wrong (the measure is undefined).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> y_true = np.array([0, 1, 1, 0])
+    >>> y_pred = np.array([0, 1, 0, 0])
+    >>> y_prob = np.array([[0.9, 0.1], [0.2, 0.8], [0.6, 0.4], [0.7, 0.3]])
+    >>> error_detection_auroc(y_true, y_pred, y_prob)
+    1.0
+    """
+    from sklearn.metrics import roc_auc_score
+
+    y_true = np.asarray(y_true)
+    y_pred = np.asarray(y_pred)
+    y_prob = np.asarray(y_prob, dtype=float)
+    confidence = np.max(y_prob, axis=1) if y_prob.ndim == 2 else np.maximum(y_prob, 1 - y_prob)
+    correct = (y_true == y_pred).astype(int)
+    if correct.min() == correct.max():
+        return None
+    return round(float(roc_auc_score(correct, confidence)), 6)

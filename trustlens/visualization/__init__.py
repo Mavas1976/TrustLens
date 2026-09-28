@@ -36,6 +36,7 @@ from trustlens.visualization.representation_plots import (
     plot_embedding_2d,
     plot_embedding_separability,
 )
+from trustlens.visualization.style import save_figure
 
 __all__ = [
     "plot_reliability_diagram",
@@ -119,7 +120,7 @@ def plot_module(
                                 save_dir,
                                 f"{module_name}_{key}_{_safe_name(subkey)}.png",
                             )
-                            subfig.savefig(path, dpi=150, bbox_inches="tight")
+                            save_figure(subfig, path, dpi=150, bbox_inches="tight")
                         plt.close(subfig)
             else:
                 # Flat: dict[str, Figure]
@@ -129,13 +130,13 @@ def plot_module(
                             save_dir,
                             f"{module_name}_{key}.png",
                         )
-                        value.savefig(path, dpi=150, bbox_inches="tight")
+                        save_figure(value, path, dpi=150, bbox_inches="tight")
                     plt.close(value)
     else:
         # Single Figure (existing behaviour)
         if save_dir:
             save_path = os.path.join(save_dir, f"{module_name}_plot.png")
-            result.savefig(save_path, dpi=150, bbox_inches="tight")
+            save_figure(result, save_path, dpi=150, bbox_inches="tight")
         plt.close(result)
 
 

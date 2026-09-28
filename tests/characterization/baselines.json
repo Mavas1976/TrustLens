@@ -4,6 +4,9 @@
       "calibration": {
         "brier_score": 0.0836,
         "ece": 0.09399999999999999,
+        "mce": 0.4000000000000001,
+        "overconfidence_error": 0.005,
+        "n_samples": 100,
         "reliability_curve": [
           [
             0.043478260869565216,
@@ -139,7 +142,12 @@
           ],
           "n_correct": 89,
           "n_incorrect": 11
-        }
+        },
+        "confidence_auroc": 0.807967,
+        "n_classes": 2,
+        "accuracy": 0.89,
+        "baseline_accuracy": 0.5,
+        "n_samples": 100
       },
       "bias": {
         "class_imbalance": {
@@ -238,28 +246,29 @@
       "representation": {
         "separability": {
           "silhouette_score": 0.0015,
-          "within_class_distance": 3.6938,
+          "within_class_distance": 3.8031,
           "between_class_distance": 3.815,
-          "separability_ratio": 1.0328,
+          "separability_ratio": 1.0031,
           "n_samples_used": 100,
           "embedding_dim": 8
         }
       }
     },
     "trust_score": {
-      "score": 46,
-      "grade": "D",
+      "score": 68,
+      "grade": "B",
       "sub_scores": {
-        "calibration": 77.5,
-        "failure": 35.6,
-        "bias": 95.6,
+        "calibration": 62.4,
+        "failure": 78.9,
+        "bias": 70.8,
         "representation": 50.1
       },
-      "penalties": {
-        "Failure": 8.1,
-        "Calibration": 6.6,
-        "Fairness": 5.7
-      }
+      "penalties": {},
+      "base_score": 68,
+      "is_blocked": false,
+      "blockers": [],
+      "caps_applied": [],
+      "score_version": "2.1"
     },
     "metadata": {
       "n_samples": 100,
@@ -271,6 +280,9 @@
       "calibration": {
         "brier_score": 0.12132141321734885,
         "ece": 0.07959529043880662,
+        "mce": 0.4564137329001824,
+        "overconfidence_error": 0.0229415014,
+        "n_samples": 100,
         "reliability_curve": [
           [
             0.0,
@@ -285,8 +297,8 @@
             1.0
           ],
           [
-            0.040806308047546376,
-            0.14206170049279068,
+            0.04080630804754637,
+            0.14206170049279063,
             0.22687678652818735,
             0.36745455244153646,
             0.4533706978357331,
@@ -416,7 +428,12 @@
           ],
           "n_correct": 82,
           "n_incorrect": 18
-        }
+        },
+        "confidence_auroc": 0.811653,
+        "n_classes": 2,
+        "accuracy": 0.82,
+        "baseline_accuracy": 0.5,
+        "n_samples": 100
       },
       "bias": {
         "class_imbalance": {
@@ -515,28 +532,31 @@
       "representation": {
         "separability": {
           "silhouette_score": 0.0015,
-          "within_class_distance": 3.6938,
+          "within_class_distance": 3.8031,
           "between_class_distance": 3.815,
-          "separability_ratio": 1.0328,
+          "separability_ratio": 1.0031,
           "n_samples_used": 100,
           "embedding_dim": 8
         }
       }
     },
     "trust_score": {
-      "score": 35,
+      "score": 39,
       "grade": "D",
       "sub_scores": {
-        "calibration": 75.9,
-        "failure": 29.1,
-        "bias": 96.1,
+        "calibration": 68.2,
+        "failure": 66.1,
+        "bias": 33.3,
         "representation": 50.1
       },
-      "penalties": {
-        "Failure": 10.3,
-        "Calibration": 4.4,
-        "Fairness": 15.0
-      }
+      "penalties": {},
+      "base_score": 57,
+      "is_blocked": true,
+      "blockers": [
+        "Blocked by severe fairness violation (largest gap 0.200 > 0.15)"
+      ],
+      "caps_applied": [],
+      "score_version": "2.1"
     },
     "metadata": {
       "n_samples": 100,

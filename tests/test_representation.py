@@ -138,3 +138,30 @@ class TestPlotEmbedding2D:
         labels = np.array([0] * 20 + [1] * 20)
         with pytest.raises(ValueError, match="Unknown method"):
             plot_embedding_2d(embeddings, labels, method="invalid", show=False)
+
+
+def test_within_class_distance_excludes_self_pairs():
+    """TL-29: two points per class at distance 1 give within distance 1, not 0."""
+    from trustlens.metrics.representation import embedding_separability
+
+    emb = np.array([[0.0, 0.0], [1.0, 0.0], [5.0, 5.0], [6.0, 5.0]])
+    result = embedding_separability(emb, np.array([0, 0, 1, 1]))
+    assert result["within_class_distance"] == pytest.approx(1.0)
+    assert np.isfinite(result["separability_ratio"])
+
+
+def test_cka_is_scale_invariant():
+    """TL-29: tiny-magnitude embeddings must not collapse to CKA 0."""
+    from trustlens.metrics.representation import centered_kernel_alignment
+
+    X = np.random.default_rng(0).normal(size=(50, 4))
+    assert centered_kernel_alignment(X * 1e-4, X * 1e-4) == pytest.approx(1.0)
+    assert centered_kernel_alignment(X * 1e4, X) == pytest.approx(1.0)
+
+
+def test_cka_is_translation_invariant():
+    """GB-10: a constant offset must not zero the alignment."""
+    from trustlens.metrics.representation import centered_kernel_alignment
+
+    X = np.random.default_rng(1).normal(size=(50, 4))
+    assert centered_kernel_alignment(X + 1e6, X) == pytest.approx(1.0, abs=1e-6)

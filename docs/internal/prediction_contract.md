@@ -5,7 +5,8 @@ This document defines the strict contract for how predictions must be normalized
 ## 1. Classification Semantics
 
 ### Binary Classification
-TrustLens metrics expect binary probabilities as a 2D array.
+TrustLens metrics expect binary probabilities as a 2D array. Rows must sum to
+1.0 (enforced at the API boundary).
 - **Allowed Input Shapes**: `(n,)`, `(n, 1)`, `(n, 2)`.
 - **Normalization Rule**: All binary outputs must be normalized to `(n, 2)` where index 1 represents the positive class.
 - **Example**: If a model returns a 1D array of positive probabilities, the backend must expand it to `[1-p, p]`.
@@ -17,8 +18,25 @@ TrustLens metrics expect binary probabilities as a 2D array.
 ---
 
 ## 2. Regression Semantics
-TrustLens does **NOT** currently support regression tasks.
-- **Contract**: Backends should raise `NotImplementedError` if regression output is detected.
+Regression is supported through `analyze(..., task="regression")` (or
+auto-detection) and bypasses the classification backends: point predictions
+come from `y_pred` or `model.predict(X)`.
+- **Contract**: classification backends still raise `NotImplementedError` when
+  asked to resolve a regressor with `task="classification"`.
+
+## 2a. Input Validation
+`trustlens.core.inputs.prepare_inputs` validates every user input once before
+any backend runs: one row per sample for every argument, finite probability
+rows that sum to 1 (tolerance 1e-3), 1-D binary probabilities expanded to
+`(n, 2)`, and a warning when pandas inputs carry different indexes.
+
+## 2b. Results Contract
+The shape of `TrustReport.results` is documented as `TypedDict` classes in
+`trustlens/results_schema.py`. A metric that could not be computed is `None`
+or absent, never a placeholder `0.0`. A module that could not run carries
+`status` (`skipped` / `degraded`), `reason` and `details`.
+`check_results_contract()` is run against real pipeline output in the test
+suite.
 
 ---
 

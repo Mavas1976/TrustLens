@@ -39,7 +39,7 @@ graph TD
     Bias --> Results
     Rep --> Results
 
-    Results --> Scoring["trust_score.py: base_score vs Penalties"]
+    Results --> Scoring["trust_score.py: sub-scores, blockers, caps"]
     Scoring --> Report[TrustReport: Narrative & Interpretation]
     Report --> Output[Console / Plots / Saved Files]
 ```
@@ -65,7 +65,7 @@ graph LR
 2. **Backends to Pipeline**: `PredictionBundle` containing standardized numpy arrays, framework identifier, and audit metadata.
 3. **Pipeline to Metrics**: Normalized arrays (`y_true`, `y_pred`, `y_prob`) and optional metadata.
 4. **Pipeline to Report**: Consolidated `results` plus audit provenance (framework version, resolver details).
-5. **Report to Scorer**: Score computation from `results` including penalties and blockers.
+5. **Report to Scorer**: Score computation from `results`: sub-scores, weighted mean, blockers and caps (methodology 2.0).
 
 ## Execution Sequence
 
@@ -118,6 +118,8 @@ sequenceDiagram
 - Independent of models; operates entirely on labels and probabilities.
 
 ### Reporting Layer (`trustlens/report.py`)
+
+`TrustReport` is assembled from focused mixins in `trustlens/_report/` (TL-18): `text.py` (console and text output), `plots.py` (plotting entry points), `io.py` (save and serialisation), `html.py` (Jupyter rendering, with escaping) and `base.py` (shared state). `report.py` keeps construction, scoring, patterns and the deployment explanation.
 
 - Packages diagnostic outputs with full backend provenance.
 - Generates textual and visual summaries.

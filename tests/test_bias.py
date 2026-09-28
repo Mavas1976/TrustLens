@@ -55,6 +55,19 @@ class TestSubgroupPerformance:
         assert "A" in result["gender"]
         assert "B" in result["gender"]
 
+    def test_low_support_group_excluded_from_performance_gap(self):
+        """TL-06: a single-sample group cannot drive the performance gap."""
+        y_true = np.array([0, 1] * 20 + [1])
+        y_pred = np.array([0, 1] * 20 + [0])
+        groups = np.array(["big"] * 40 + ["tiny"])
+
+        result = subgroup_performance(y_true, y_pred, {"g": groups}, min_group_size=30)
+
+        assert result["g"]["tiny"]["low_support"] is True
+        summary = result["g"]["__summary__"]
+        assert summary["performance_gap"] is None
+        assert summary["excluded_groups"] == ["tiny"]
+
     def test_performance_gap_computed(self):
         y_true = np.array([0, 1, 0, 1])
         y_pred = np.array([0, 1, 1, 0])  # Group A: perfect, B: all wrong
@@ -123,14 +136,44 @@ class TestEqualizedOdds:
         assert summary["fpr_violation"] == "acceptable"
 
     def test_edge_case_no_positives(self):
-        """Group with no positive samples: TPR should be 0.0 (not raise)."""
+        """Group with no positive samples: TPR is undefined (None), not 0.0 (TL-06)."""
         y_true = np.array([0, 0, 1, 1])
         y_pred = np.array([0, 1, 1, 0])
         group = np.array([0, 0, 1, 1])  # group 0 has no positives
 
         result = equalized_odds(y_true, y_pred, sensitive_features={"group": group})
 
-        assert result["group"]["0"]["tpr"] == pytest.approx(0.0)
+        assert result["group"]["0"]["tpr"] is None
+        # Only one defined TPR remains, so no TPR gap can be measured.
+        assert result["group"]["__summary__"]["tpr_gap"] is None
+        assert result["group"]["__summary__"]["tpr_violation"] == "insufficient_data"
+        # Group 1 has no negatives either, so its FPR is undefined too.
+        assert result["group"]["1"]["fpr"] is None
+        assert result["group"]["__summary__"]["fpr_gap"] is None
+
+    def test_undefined_rate_is_excluded_from_gap(self):
+        """A perfect classifier with a negatives-only group has no TPR gap (TL-06)."""
+        y_true = np.array([0, 0, 0, 1, 0, 1, 1, 0])
+        y_pred = y_true.copy()
+        group = np.array(["a", "a", "a", "b", "b", "b", "c", "c"])
+
+        summary = equalized_odds(y_true, y_pred, {"g": group})["g"]["__summary__"]
+
+        assert summary["tpr_gap"] == pytest.approx(0.0)
+        assert summary["tpr_violation"] == "acceptable"
+
+    def test_low_support_groups_are_excluded(self):
+        """Groups below min_group_size are flagged and left out of the gaps."""
+        y_true = np.array([1, 0] * 20 + [1, 0])
+        y_pred = np.array([1, 0] * 20 + [0, 1])
+        group = np.array(["big"] * 40 + ["tiny"] * 2)
+
+        result = equalized_odds(y_true, y_pred, {"g": group}, min_group_size=30)
+
+        assert result["g"]["tiny"]["low_support"] is True
+        assert "low_support" not in result["g"]["big"]
+        assert result["g"]["__summary__"]["tpr_gap"] is None
+        assert result["g"]["__summary__"]["tpr_violation"] == "insufficient_data"
 
     def test_edge_case_no_negatives(self):
         """Group with no negative samples: FPR should be 0.0 (not raise)."""

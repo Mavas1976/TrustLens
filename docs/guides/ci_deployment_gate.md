@@ -24,7 +24,7 @@ Use a staged policy at first, then tighten:
 - Mature phase:
   - score >= 75
   - not blocked
-  - fairness penalty below defined domain threshold
+  - bias sub-score (or largest fairness gap) within the defined domain threshold
 
 ## Minimal Pattern
 
@@ -42,5 +42,5 @@ if report.trust_score.score < 65:
 ## Operational Recommendations
 
 - Keep both machine-readable (`report.json`, `trust_score.json`) and human-readable (`report.txt`) outputs.
-- Do not rely on one threshold alone; include blocker status and penalty context.
+- Do not rely on one threshold alone; include `blockers`, `caps_applied` and `is_partial`.
 - Store historical scores to detect reliability drift over time.

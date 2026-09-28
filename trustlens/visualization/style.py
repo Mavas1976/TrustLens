@@ -49,30 +49,14 @@ from typing import Any
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
+from trustlens._palette import BRAND_COLORS, GRADE_COLORS
+
 # ---------------------------------------------------------------------------
 # Brand colors — name lookup for non-categorical use (titles, fills, etc.)
 # ---------------------------------------------------------------------------
 
-BRAND_COLORS: dict[str, str] = {
-    "blue": "#4B8BF5",
-    "orange": "#F5784B",
-    "green": "#34C759",
-    "red": "#FF3B30",
-    "amber": "#FF9F0A",
-    "purple": "#AF52DE",
-    "pink": "#FF2D55",
-    "cyan": "#5AC8FA",
-    "deep_orange": "#FF6B35",
-    "gray": "#8E8E93",
-    "light_gray": "#CCCCCC",
-    "muted_gray": "#AAAAAA",
-    "text_dark": "#444444",
-    "text_muted": "#666666",
-    "text_subtle": "#888888",
-    "light": "#F2F2F7",
-    "white": "#FFFFFF",
-    "dark": "#1C1C1E",
-}
+# BRAND_COLORS lives in trustlens._palette so non-plotting code can use the
+# colours without importing matplotlib (TL-30); re-exported here.
 
 # ---------------------------------------------------------------------------
 # Categorical palette — ordered list for plots with N groups/classes
@@ -106,12 +90,7 @@ SEMANTIC_COLORS: dict[str, dict[str, str]] = {
         "caution": BRAND_COLORS["amber"],
         "do_not_deploy": BRAND_COLORS["red"],
     },
-    "grade": {
-        "A": BRAND_COLORS["green"],
-        "B": BRAND_COLORS["blue"],
-        "C": BRAND_COLORS["amber"],
-        "D": BRAND_COLORS["red"],
-    },
+    "grade": dict(GRADE_COLORS),
     "direction": {
         "positive": BRAND_COLORS["blue"],
         "negative": BRAND_COLORS["orange"],
@@ -240,7 +219,7 @@ def apply_style(theme: Theme | None = None) -> Iterator[Theme]:
 
     Examples
     --------
-    >>> with apply_style() as theme:
+    >>> with apply_style() as theme:  # doctest: +SKIP
     ...     fig, ax = plt.subplots()
     ...     ax.plot([0, 1], [0, 1], color=theme.brand["blue"])
     """
@@ -363,3 +342,17 @@ def get_categorical_colors(n: int, theme: Theme | None = None) -> list[str]:
     if not palette:
         raise ValueError("theme palette must be non-empty")
     return [palette[i % len(palette)] for i in range(n)]
+
+
+def save_figure(fig: Any, path: Any, **kwargs: Any) -> None:
+    """Save ``fig`` to ``path``, creating missing parent directories first.
+
+    All TrustLens plotting functions save through this helper, so a
+    ``save_path`` in a directory that does not exist yet works instead of
+    failing with FileNotFoundError (TL-20).
+    """
+    from pathlib import Path
+
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(target, **kwargs)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import numpy as np
 
-from trustlens.visualization.style import apply_style, get_categorical_colors
+from trustlens.visualization.style import apply_style, get_categorical_colors, save_figure
 
 
 def _get_shared_dimensions(metrics_dict: dict[str, dict[str, float]]) -> list[str] | None:
@@ -87,7 +87,7 @@ def plot_radar_comparison(
         ax.legend(loc="upper right", bbox_to_anchor=(1.2, 1.1))
 
         if save_path:
-            fig.savefig(save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
+            save_figure(fig, save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
         if show:
             plt.show()
 

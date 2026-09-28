@@ -1,5 +1,11 @@
 # TrustLens v0.5.0 Release Checklist
 
+> **Correction (2026-09 audit, TL-21):** at v0.5.0 the Sphinx build did not
+> succeed with the declared `[docs]` extra (`sphinxcontrib-mermaid` was
+> missing) and produced 3 warnings once it was installed. Both are fixed, and CI
+> now builds the docs with `-W`, so this item is enforced rather than
+> self-reported.
+
 This checklist tracks the final release engineering steps for the v0.5.0 milestone.
 
 ## Quality Assurance

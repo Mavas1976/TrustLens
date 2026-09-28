@@ -1,0 +1,28 @@
+T1a brier vs sklearn max|diff|: 5.551115123125783e-17
+T1a ECE(uniform) vs ref max|diff| (incl. edge ties): 5.551115123125783e-17
+T1a MCE(uniform) vs ref max|diff|: 0  MCE<ECE violations: 0
+T1b reliability_curve vs sklearn calibration_curve max|diff|: 0
+T1c edge ties: ECE 0.18750000000000003  ECE rebuilt from reliability_curve 0.18750000000000003 counts [1 1 2 1 1 2]
+T1c linspace edges repr: ['np.float64(0.2)', 'np.float64(0.30000000000000004)', 'np.float64(0.4)']  0.3>=edge3? False  0.7>=edges[7]? False
+T1c reliability bins for 0.3/0.7/0.6 -> mean_pred [0.3 0.6 0.7] counts [1 1 1]
+T1d quantile ECE vs ECE rebuilt from quantile reliability_curve max|diff|: 1.1796119636642288e-16
+T1e perfectly calibrated n=2e5: ECE 0.0016 MCE 0.0037
+T1f ECE empty: 0.0 
+T1f ECE shape mismatch: RAISES IndexError: boolean index did not match indexed array along axis 0; size of axis is 3 but size of corresponding 
+T1f ECE n_bins=0: RAISES ValueError: n_bins must be >= 1; got 0.
+T1f ECE NaN prob: 0.09999999999999998 
+T1f MCE NaN prob: 0.19999999999999996 
+T1f Brier NaN prob: nan 
+T1f ECE prob>1 (1.5): 0.06666666666666667 
+T1f ECE prob<0: 0.06666666666666665 
+T1f Brier prob>1: 2.125 
+T1f Brier labels {1,2}: RAISES ValueError: brier_score expects binary labels (0/1). Got unique values: [1. 2.].
+T1f ECE labels {1,2} (no validation): 1.0666666666666667 
+T1f ECE constant pred quantile: 0.4 
+T1f ECE constant pred uniform: 0.4 
+T1f reliability_curve empty: (array([], dtype=float64), array([], dtype=float64), array([], dtype=int64)) 
+T1f reliability_curve NaN: (array([1. , 0.5]), array([0.8, nan]), array([1, 2])) 
+T1f reliability_curve p=1.5: (array([0., 1.]), array([0.2, 1.5]), array([1, 2])) 
+T1f reliability_curve bad strategy: RAISES ValueError: Unknown strategy 'x'. Use 'uniform' or 'quantile'.
+T1f reliability_curve n_bins=0: (array([0.5]), array([0.35]), array([2])) 
+T1f Brier docstring example: 0.048 

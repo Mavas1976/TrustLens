@@ -33,10 +33,10 @@ class PluginRegistry:
 
     Examples
     --------
-    >>> registry = PluginRegistry()
-    >>> registry.register(MyPlugin)
-    >>> plugin = registry.get("my_plugin")
-    >>> result = plugin.run(model, X, y_true, y_pred, y_prob)
+    >>> registry = PluginRegistry()  # doctest: +SKIP
+    >>> registry.register(MyPlugin)  # doctest: +SKIP
+    >>> plugin = registry.get("my_plugin")  # doctest: +SKIP
+    >>> result = plugin.run(model, X, y_true, y_pred, y_prob)  # doctest: +SKIP
     """
 
     _registry: dict[str, type[BasePlugin]] = {}

@@ -13,10 +13,10 @@ It requires only a single forward + backward pass and no model modification.
 
 Usage
 -----
->>> from trustlens.explainability import GradCAM
->>> cam = GradCAM(model, target_layer=model.layer4[-1])
->>> heatmap = cam.generate(image_tensor, class_idx=283)
->>> cam.overlay(image_np, heatmap, save_path="heatmap.png")
+>>> from trustlens.explainability import GradCAM  # doctest: +SKIP
+>>> cam = GradCAM(model, target_layer=model.layer4[-1])  # doctest: +SKIP
+>>> heatmap = cam.generate(image_tensor, class_idx=283)  # doctest: +SKIP
+>>> cam.overlay(image_np, heatmap, save_path="heatmap.png")  # doctest: +SKIP
 
 References
 ----------

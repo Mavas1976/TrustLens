@@ -1,0 +1,18 @@
+[xgb clf labels 0..2] OK fw=xgboost score=57 brier=0.2322 ece=0.0393 err=0.16
+[xgb fit 1..3] EXC ValueError: Invalid classes inferred from unique values of `y`.  Expected: [0 1 2], got [1 2 3]
+[xgb Booster 0..2] OK fw=xgboost score=57 brier=0.2322 ece=0.0393 err=0.16
+[xgb Booster string y + class_labels] OK fw=xgboost score=57 brier=0.2322 ece=0.0393 err=0.16
+[xgb Booster string y no class_labels] EXC ValueError: invalid literal for int() with base 10: np.str_('eel')
+[xgb Booster 1..3 no class_labels] EXC IndexError: index 3 is out of bounds for axis 0 with size 3
+[xgb Booster binary] OK fw=xgboost score=64 brier=0.0423 ece=0.0267 err=0.0525
+[xgb Booster reg objective, binary y] EXC NotImplementedError: TrustLens currently supports classification models only. XGBoost model with objective 'reg:squarederror' is not supported.
+[lgbm clf labels string] OK fw=lightgbm score=49 brier=0.2463 ece=0.0870 err=0.18
+[lgbm clf labels 1..3] OK fw=lightgbm score=49 brier=0.2463 ece=0.0870 err=0.18
+[lgb Booster 0..2] OK fw=lightgbm score=49 brier=0.2463 ece=0.0870 err=0.18
+[lgb Booster 1..3 no class_labels] EXC IndexError: index 3 is out of bounds for axis 0 with size 3
+[lgb Booster regression objective] EXC NotImplementedError: TrustLens currently supports classification models only. LightGBM model with objective 'regression' is not supported.
+[catboost labels string] OK fw=catboost score=55 brier=0.2356 ece=0.0462 err=0.15
+[catboost labels 1..3] OK fw=catboost score=55 brier=0.2356 ece=0.0462 err=0.15
+[catboost labels 0..2] OK fw=catboost score=55 brier=0.2356 ece=0.0462 err=0.15
+[catboost binary string] OK fw=catboost score=64 brier=0.0370 ece=0.0266 err=0.045
+catboost classes_ dtype ['neg' 'pos'] <class 'str'>

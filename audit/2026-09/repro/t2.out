@@ -1,0 +1,20 @@
+A1 multiclass Brier: 0.4165463290430318 ref: 0.4165463290430318
+A2 top-label ECE: 0.02206926555656588  perfectly calibrated model -> calibration sub-score: 55.0
+A3 K=10 uniform-probability (perfectly calibrated, uninformative) Brier: 0.9 ECE: 0.0052 cal sub-score: 9.2
+A4 binary p=0.5 (calibrated, uninformative) Brier: 0.25 cal sub-score: 73.6
+A5 K=5 calibrated sharp: multiclass Brier 0.3458  top-label Brier (conf vs correct) 0.1529  ECE 0.0103  cal sub-score 63.9
+B1 binary labels 0/1: brier=0.16622685979385565 ece=0.05234323139128686 ts=52 grade=D
+B2 binary labels {1,2} no class_labels: RAISES ValueError: brier_score expects binary labels (0/1). Got unique values: [1. 2.].
+B3 binary labels {1,2} with class_labels: brier=0.16622685979385565 ece=0.05234323139128686 ts=52 grade=D
+B4 binary string labels no class_labels: RAISES ValueError: invalid literal for int() with base 10: np.str_('pos')
+B5 binary string labels with class_labels: brier=0.16622685979385565 ece=0.05234323139128686 ts=52 grade=D
+B6 bool labels: brier=0.16622685979385565 ece=0.05234323139128686 ts=52 grade=D
+B7 multiclass labels {10,20,30} no class_labels: RAISES IndexError: index 20 is out of bounds for axis 0 with size 3
+B8 multiclass labels {10,20,30} with class_labels: brier=0.512898265192197 ece=0.061763848023943885 ts=33 grade=D
+B9 multiclass with y_pred != argmax(y_prob): brier=0.512898265192197 ece=0.05701839834026173 ts=34 grade=D
+   B9 ref top-label ECE (argmax-based): 0.0618  pipeline ECE: 0.057  frac y_pred!=argmax: 0.3333333333333333
+B10 binary all-positive y_true: brier=0.009999999999999995 ece=0.09999999999999953 ts=46 grade=D
+B11 y_prob 2 columns but y_true has 3 classes: RAISES ValueError: brier_score expects binary labels (0/1). Got unique values: [0. 1. 2.].
+B12 multiclass rows sum to 0.5 (unnormalized, accepted?): brier=0.6322604086243369 ece=0.3174048490388373 ts=3 grade=D
+B13 multiclass rows sum to 1 (same model): brier=0.5085384089974129 ece=0.020588039181241816 ts=38 grade=D
+B14 multiclass string digit labels no class_labels: brier=0.5085384089974129 ece=0.020588039181241816 ts=38 grade=D

@@ -1,0 +1,22 @@
+G1 error_distribution vs numpy (MedAE, RMSE, P90, MAE) max|diff|: 0
+G2 PICP Gaussian 90% interval: 0.899 -0.001 well-calibrated
+G2b PICP with NaN y_true: {'picp': 0.6667, 'target_coverage': 0.9, 'calibration_error': -0.2333, 'mean_interval_width': 3.0, 'verdict': 'over-confident', 'n_samples': 3}
+G3 ICE: 0.0023  manual: 0.0023  sharpness_skill: 0.2964 well-calibrated
+G4 L=3   CRPS(trap)=0.5031 CRPS(recon)=0.6733 closed-form=0.5660 rel.err(trap)=-0.111 span=[0.025, 0.975] | rel=0.0931 res=0.242 unc=0.8222 pot=0.5802 rel+pot=0.6733
+G4 L=9   CRPS(trap)=0.5608 CRPS(recon)=0.5512 closed-form=0.5660 rel.err(trap)=-0.009 span=[0.025, 0.975] | rel=0.0031 res=0.2285 unc=0.7766 pot=0.5481 rel+pot=0.5512
+G4 L=19  CRPS(trap)=0.5624 CRPS(recon)=0.5480 closed-form=0.5660 rel.err(trap)=-0.006 span=[0.025, 0.975] | rel=0.0007 res=0.2282 unc=0.7755 pot=0.5473 rel+pot=0.5480
+G4 L=49  CRPS(trap)=0.5628 CRPS(recon)=0.5473 closed-form=0.5660 rel.err(trap)=-0.006 span=[0.025, 0.975] | rel=0.0002 res=0.2282 unc=0.7753 pot=0.5471 rel+pot=0.5473
+G5 climatology forecast: resolution 0.0  reliability 0.001
+G6 reliability too-narrow: 0.048  vs calibrated: 0.0007
+G7 obs=100 far outside forecast N(0,1): crps_from_intervals 47.3899  decomposition crps 0.7994  closed form 49.8348
+G8 error_variance_correlation pearson/spearman vs scipy max|diff|: 0
+G9 scale=1.0     stored rmse=1.4132 true R2=-0.996 -> sub={'accuracy': 0.0} score=0 grade=D blocked=True
+G9 scale=0.01    stored rmse=0.0141 true R2=-0.996 -> sub={'accuracy': 0.0} score=0 grade=D blocked=True
+G9 scale=0.001   stored rmse=0.0014 true R2=-0.996 -> sub={'accuracy': 0.0} score=0 grade=D blocked=True
+G9 scale=0.0001  stored rmse=0.0001 true R2=-0.996 -> sub={'accuracy': 0.0} score=0 grade=D blocked=False
+G9 scale=1e-05   stored rmse=0.0 true R2=-0.996 -> sub={'accuracy': 100.0} score=100 grade=A blocked=False
+G10 small-scale good model: err_dist {'median_absolute_error': 0.0, 'p90_absolute_error': 0.0, 'rmse': 0.0}  true R2 0.9893  score 100 {'accuracy': 100.0}
+G11 multilevel (95% level under-covers): {'ice': 0.0887, 'worst_calibration_error': -0.1717, 'sharpness_skill': 0.3075, 'n_calibrated_levels': 1} 47 D Low Trust - Blocked by severe interval miscoverage (coverage
+G12 single-level well-calibrated 95%: 77 B {'accuracy': 51.2, 'interval_calibration': 96.4} {'accuracy': 0.429, 'interval_calibration': 0.571}
+G13 perfect regressor: 100 A {'accuracy': 100.0}
+G15 anti-informative variance: -0.3302 {'accuracy': 47.1, 'uncertainty_informativeness': 0.0} {'Weak Uncertainty': 15.0} 9

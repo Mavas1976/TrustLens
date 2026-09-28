@@ -1,6 +1,6 @@
 # TrustLens Roadmap
 
-> Last updated: May 2026
+> Last updated: September 2026
 > This roadmap reflects our current priorities. Community feedback shapes every phase.
 
 ---
@@ -9,7 +9,7 @@
 
 - ✅ Stable ML evaluation pipeline (calibration, failure, bias, representation)
 - ✅ Head-to-head model comparison API (`trustlens.compare`)
-- ✅ Decision-ready Trust Score with penalty reasoning
+- ✅ Decision-ready Trust Score (methodology 2.0: sub-scores, blockers and caps; see ADR-001)
 - ✅ Framework-agnostic prediction resolver architecture (XGBoost, LightGBM, CatBoost)
 - ✅ Scientific Validation: Model Zoo Benchmark for accuracy/trust decoupling
 - ✅ Professional contributor infrastructure and documentation
@@ -32,9 +32,9 @@ These are high-priority items currently being developed or targeted for the next
 - [ ] **TrustComparison** (Issue #57) — *Differential reliability audits*
 - [x] **XGBoost Support** — *Native prediction resolver architecture*
 - [x] **Model Zoo Benchmark** — *Scientific validation of trust diagnostics*
-- [~] **Deep Learning Backends** — *Experimental Keras & TensorFlow integration*
+- [ ] **Deep Learning Backends** — *Keras & TensorFlow resolvers (framework detection exists; no resolver yet — pass `y_prob` manually)*
 - [~] **HTML Report Export** (Issue #19) — *[OPEN]*
-- [ ] **Maximum Calibration Error (MCE)** (Issue #1)
+- [x] **Maximum Calibration Error (MCE)** (Issue #1)
 
 ---
 
@@ -62,7 +62,7 @@ The minimal set of features required to be genuinely useful to practitioners.
 
 ## Phase 2: Core Expansion — *Going Deeper*
 
-**Status: COMPLETE (v0.5.0)**
+**Status: PARTIALLY COMPLETE** — checked items shipped (most in v0.5.0); unchecked items are still open.
 
 > **Focus:** High-impact ML features that integrate directly into the `analyze()` pipeline.
 
@@ -70,11 +70,11 @@ The minimal set of features required to be genuinely useful to practitioners.
 - [x] **Equalized Odds** (Issue #25)
 - [x] **UMAP/t-SNE Visualization** (Issue #22)
 - [x] **Jupyter Rich Display** (`_repr_html_`) (Issue #24)
-- [x] **Progress Bars** via `tqdm` (Issue #28)
-- [x] **Subgroup ECE** (calibration per demographic group)
+- [ ] **Progress Bars** via `tqdm` (Issue #28) — *implemented earlier, removed together with the tqdm dependency; not currently available*
+- [ ] **Subgroup ECE** (calibration per demographic group) — *not implemented yet*
 - [~] **HTML Report Export** (Issue #19) — [OPEN]
 - [ ] **Temperature Scaling** (Issue #18)
-- [ ] **Maximum Calibration Error (MCE)** (Issue #1)
+- [x] **Maximum Calibration Error (MCE)** (Issue #1)
 
 ### Nice to Have
 - [ ] **Multi-class ECE** (label-wise decomposition)
@@ -92,8 +92,8 @@ The minimal set of features required to be genuinely useful to practitioners.
 - [x] **XGBoost Integration** — Native `analyze()` support for `XGBClassifier` and raw `Booster`
 - [x] **LightGBM Integration** — Native `analyze()` support for `LGBMClassifier` and raw `Booster`
 - [x] **CatBoost Integration** — Native `analyze()` support for `CatBoostClassifier`
-- [~] **Keras Experimental** — Sequential and functional model support
-- [~] **TensorFlow Experimental** — SavedModel loading and lazy import hygiene
+- [ ] **Keras** — Sequential and functional model support (no resolver yet)
+- [ ] **TensorFlow** — SavedModel loading and lazy import hygiene (no resolver yet)
 
 ---
 
@@ -127,8 +127,8 @@ Making TrustLens a community standard.
 
 ### Contribution & Documentation
 - [x] Contributor hall of fame in README
-- [x] Video walkthrough series
-- [x] Interactive Jupyter notebooks (Colab-ready)
+- [ ] Video walkthrough series
+- [~] Interactive Jupyter notebooks (in `examples/`; Colab badges not added yet)
 - [ ] Plugin submission process (community plugin registry)
 - [ ] `trustlens-contrib` companion repository
 

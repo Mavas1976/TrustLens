@@ -50,6 +50,8 @@ exclude_patterns = [
     "_build",
     "Thumbs.db",
     ".DS_Store",
+    # Maintainer checklist, not user documentation.
+    "RELEASE_CHECKLIST.md",
 ]
 
 # -- Options for HTML output -------------------------------------------------
@@ -57,7 +59,8 @@ exclude_patterns = [
 html_theme = "furo"
 
 # Static assets
-html_static_path = ["_static"]
+# No custom static assets: docs/_static is git-ignored, and pointing at a
+# missing directory fails `sphinx -W` on a clean checkout (GB-02).
 
 # GitHub Pages deployment URL
 html_baseurl = "https://khanz9664.github.io/trustlensdocs/"

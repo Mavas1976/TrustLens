@@ -29,7 +29,9 @@ def compare_dicts(actual, expected, path=""):
         for i, (a, e) in enumerate(zip(actual, expected)):
             compare_dicts(a, e, path=f"{path}[{i}]")
     elif isinstance(actual, float):
-        assert actual == pytest.approx(expected, abs=1e-5), (
+        # 5e-4 absorbs binning differences across the supported scikit-learn
+        # range (sklearn 1.2 moved an MCE value by 6e-5; GB-19).
+        assert actual == pytest.approx(expected, abs=5e-4), (
             f"Value mismatch at {path}: actual={actual}, expected={expected}"
         )
     else:
@@ -89,6 +91,11 @@ def test_analyze_parity(baselines, model_name):
             "grade": report.trust_score.grade,
             "sub_scores": report.trust_score.sub_scores,
             "penalties": report.trust_score.penalties_applied,
+            "base_score": report.trust_score.base_score,
+            "is_blocked": report.trust_score.is_blocked,
+            "blockers": report.trust_score.blockers,
+            "caps_applied": report.trust_score.caps_applied,
+            "score_version": report.trust_score.score_version,
         },
         "metadata": {
             "n_samples": report.metadata["n_samples"],

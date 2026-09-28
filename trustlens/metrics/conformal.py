@@ -577,8 +577,8 @@ def size_stratified_coverage(
 
     Examples
     --------
-    >>> out = size_stratified_coverage(y_true, pred_sets, min_stratum=20)
-    >>> out["worst_stratum_coverage"]
+    >>> out = size_stratified_coverage(y_true, pred_sets, min_stratum=20)  # doctest: +SKIP
+    >>> out["worst_stratum_coverage"]  # doctest: +SKIP
     """
     S = to_membership_matrix(pred_sets, n_classes)
     n = S.shape[0]
@@ -691,8 +691,8 @@ def conformal_diagnostics(
 
     Examples
     --------
-    >>> report = conformal_diagnostics(y_true, pred_sets, nominal_coverage=0.9)
-    >>> report["ssc_violation"]
+    >>> report = conformal_diagnostics(y_true, pred_sets, nominal_coverage=0.9)  # doctest: +SKIP
+    >>> report["ssc_violation"]  # doctest: +SKIP
     """
     if nominal_coverage is not None and not 0.0 < nominal_coverage <= 1.0:
         raise ValueError(f"nominal_coverage must be in (0, 1]; got {nominal_coverage}.")

@@ -70,3 +70,99 @@ def test_save_directory_bundle(sample_report, tmp_path):
     assert (out_dir / "report.json").exists()
     assert (out_dir / "metadata.json").exists()
     assert (out_dir / "trust_score.json").exists()
+
+
+class TestSaveRobustness:
+    """TL-27 / TL-20: save paths behave predictably."""
+
+    @pytest.fixture
+    def report(self):
+        import numpy as np
+
+        from trustlens import analyze
+
+        y = np.array([0, 1] * 60)
+        p = np.where(y == 1, 0.8, 0.2)
+        return analyze(None, None, y, y_pred=y, y_prob=np.column_stack([1 - p, p]), verbose=False)
+
+    def test_accepts_pathlib_and_dotted_directories(self, report, tmp_path):
+        assert report.save(tmp_path / "r.json").is_file()
+        existing = tmp_path / "run_2026.09"
+        existing.mkdir()
+        assert report.save(existing).is_dir()
+        # GB-18: an unknown suffix on a path that does not exist is refused.
+        with pytest.raises(ValueError, match="Unsupported report file type"):
+            report.save(tmp_path / "report.v2")
+
+    def test_rejects_unsupported_file_type(self, report, tmp_path):
+        with pytest.raises(ValueError, match="Unsupported report file type"):
+            report.save(tmp_path / "report.PNG")
+        assert not (tmp_path / "report.PNG").exists()
+
+    def test_overwrite_false_protects_existing_output(self, report, tmp_path):
+        target = tmp_path / "r.json"
+        report.save(target)
+        with pytest.raises(FileExistsError):
+            report.save(target, overwrite=False)
+
+    def test_plots_create_missing_directories(self, report, tmp_path):
+        target = tmp_path / "nested" / "deeper" / "summary.png"
+        report.summary_plot(save_path=str(target), show=False)
+        assert target.is_file()
+
+
+class TestStrictJson:
+    """GB-16 / GA-09: saved output is strict JSON and carries the methodology version."""
+
+    def _strict(self, text):
+        def reject(token):
+            raise ValueError(f"non-standard JSON token {token}")
+
+        return json.loads(text, parse_constant=reject)
+
+    def test_non_finite_values_become_null(self, tmp_path):
+        import numpy as np
+
+        from trustlens import analyze
+
+        y = np.array([0, 1] * 60)
+        p = np.where(y == 1, 0.8, 0.2)
+        emb = np.column_stack([y, 1 - y]).astype(float)  # zero within-class spread -> inf ratio
+        report = analyze(
+            None,
+            None,
+            y,
+            y_pred=y,
+            y_prob=np.column_stack([1 - p, p]),
+            embeddings=emb,
+            verbose=False,
+        )
+        assert not np.isfinite(
+            report.results["representation"]["separability"]["separability_ratio"]
+        )
+        saved = self._strict(report.save(tmp_path / "r.json").read_text())
+        assert saved["results"]["representation"]["separability"]["separability_ratio"] is None
+        bundle = report.save(tmp_path / "bundle")
+        for name in ("report.json", "metadata.json", "trust_score.json"):
+            self._strict((bundle / name).read_text())
+        json.dumps(report.to_dict(), allow_nan=False)
+        assert report.to_dict()["trust_score_version"] == report.trust_score.score_version
+
+    def test_regression_outputs_carry_score_version(self, tmp_path):
+        import numpy as np
+
+        from trustlens import analyze
+
+        rng = np.random.default_rng(0)
+        y = rng.normal(size=200)
+        report = analyze(
+            None,
+            None,
+            y,
+            y_pred=y + rng.normal(scale=0.3, size=200),
+            task="regression",
+            verbose=False,
+        )
+        saved = self._strict((report.save(tmp_path / "reg") / "trust_score.json").read_text())
+        assert saved["score_version"] == report.trust_score.score_version
+        assert report.to_dict()["trust_score_version"] == report.trust_score.score_version

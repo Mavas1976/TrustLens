@@ -1,0 +1,4 @@
+numpy          : (63, 0.05035423698556761, {'g': {'A': 0.9414, 'B': 0.9344, '__summary__': None}})
+pandas shuffled: (63, 0.05035423698556761, {'g': {'A': 0.9414, 'B': 0.9344, '__summary__': None}})
+pandas sens sorted-index (label-aligned same data): (63, 0.05035423698556761, {'g': {'A': 0.9531, 'B': 0.9221, '__summary__': None}})
+y_true type stored in report: <class 'pandas.Series'>

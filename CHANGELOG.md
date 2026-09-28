@@ -18,10 +18,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Multi-level Interval Calibration (ICE) & Calibration-Conditioned Sharpness**: Extended the regression Trust Score's uncertainty dimensions per RFC #155. `analyze()` (`prediction_intervals`) now accepts a `{level: (lower, upper)}` mapping alongside the existing single `(lower, upper)` tuple, routing to the new `multilevel_interval_coverage()` which reports the **Interval Calibration Error (ICE)** — the mean coverage gap across nominal levels — and a **calibration-conditioned sharpness proxy** (interval width measured only among the levels that pass calibration, normalized against the climatology spread; the CRPS-Resolution analog). Interval Calibration scores from ICE when multi-level data is present (single-level PICP fallback); Uncertainty Informativeness prefers the sharpness proxy (error-variance correlation fallback), with graceful degradation and weight redistribution preserved. Raw CRPS/CRPSS is intentionally deferred to a report diagnostic so calibration is not double-counted. Fully backward compatible. (closes #155) (refs #82) Thanks @Whatsonyourmind
 
 ### Fixed
+- **Trust Score no longer blocks accurate, calibrated models (TL-01)**: the Failure sub-score normalises the confidence gap by its attainable maximum `1 − 1/K`, and an error-free model gets the full gap score. Scaled LogisticRegression on breast_cancer (98.8% accuracy) was 68/D "Blocked"; it now passes. Failure results record `n_classes`.
+- **Unassessed dimensions are no longer scored as 0 (TL-02)**: a skipped calibration (no `y_prob`) or a failure analysis without confidence metrics is excluded and its weight redistributed.
+- **Partial runs cannot pass (TL-03)**: unknown names in `modules=` raise `ValueError`. When calibration or failure is not assessed, `TrustScoreResult.is_partial` is `True`, `missing_dimensions` lists them, the grade is capped at C and report metadata carries `partial: true`. `compare()` never recommends a partial, blocked or grade-D report (TL-11).
+- **Regression Trust Score is unit-independent (TL-04)**: `error_distribution()` returns unrounded values, so a model worse than the mean no longer scores 100/A on small-unit targets.
+- **Fairness gaps use defined rates and adequate groups only (TL-06)**: `equalized_odds()` reports `tpr`/`fpr` as `None` when undefined instead of `0.0`. `subgroup_performance()` and `equalized_odds()` take `min_group_size` (30 in the pipeline); low-support groups are flagged and excluded from gaps, and a gap without two eligible values is `None` with violation `insufficient_data`.
+- **Task auto-detection (TL-07)**: fitted scikit-learn-style regressors and integer-valued targets with many spread-out values (counts, prices) route to regression; `y_prob` implies classification.
+- **HTML reports escape user-derived text (TL-08)**: feature names, verdicts and narrative text are escaped in `TrustReport._repr_html_` and `TrustScoreResult._repr_html_`.
+- `tests/backends/test_xgboost_logic.py` is skipped when xgboost is not installed (TL-25).
+- **Input validation (TL-12)**: `analyze()` validates every input once (`trustlens.core.inputs`): lists and pandas objects are converted, mismatched lengths raise an error naming the argument, probability rows must sum to 1, 1-D binary probabilities are expanded, differing pandas indexes trigger a warning, `sensitive_features` may be a DataFrame and missing values form a `"<missing>"` group.
+- **Labels (TL-13)**: with `y_pred` + `y_prob`, class labels come from `model.classes_` or are inferred when unambiguous; otherwise a clear "pass class_labels" error replaces an `IndexError`. Conformal diagnostics use labels encoded to the prediction-set columns (coverage was silently wrong for labels 1..K).
+- **Plots and saving (TL-20, TL-27)**: every plot saves through `visualization.style.save_figure`, which creates missing directories; `plot_bias(mode="all")` names the underlying errors. `TrustReport.save()` accepts `os.PathLike`, rejects unsupported file suffixes instead of creating a directory named `report.png`, and gains `overwrite=False` protection.
+- **Quiet runs (TL-26)**: `verbose=False` prints nothing; the unused tqdm bar is removed; `quick_analyze()` prints its demo banner only for demo data.
+- **Metric input checks (TL-28)**: ECE, MCE and the overconfidence error reject empty input, non-finite or out-of-range probabilities and non-binary labels.
+- **Pattern detection (TL-17)**: skipped modules no longer read as a perfect 0.0 in report patterns and insights.
+- **Independent-verification fixes**:
+  - Top-label ECE, overconfidence error and error-detection AUROC judge `argmax(y_prob)`, and the argmax warning also works for integer labels, catching swapped probability columns (GA-03).
+  - NaN/Inf in `y_true`/`y_pred` raise (GA-07); NaN in a numeric sensitive feature forms the `"<missing>"` group (GB-04).
+  - Saved JSON is strict (NaN/Inf become null) and carries `score_version` everywhere (GB-16, GA-09).
+  - Equalized odds runs for any two labels, using `class_labels[1]` as positive (GA-05).
+  - Ragged prediction sets written in class labels are encoded (GA-08).
+  - Excluded low-support groups are logged and named in the report (GA-04).
+  - Ambiguous integer targets (many contiguous values, or few distinct values per sample) raise and ask for `task=`; fractional targets are regression (GA-06).
+  - `modules="calibration"` is accepted as one module; fewer than 30 samples caps at C; the all-correct "overconfident" insight is gone (GA-11).
+  - Missing metrics are "not assessed", never scored from defaults (GB-05).
+  - A failed equalized-odds computation caps at C instead of improving the bias score (GB-06).
+  - CKA is translation-invariant (GB-10).
+  - Brier and weights reject non-finite values (GB-12).
+  - `quick_analyze(model)` without data raises (GB-17).
+  - `save()` refuses any unknown suffix unless the path is an existing directory (GB-18).
+  - Characterization tolerance covers the supported scikit-learn range (GB-19).
+  - The docs build on a clean checkout (GB-02).
+  - The wheel ships only `trustlens` (GB-03).
+- **Metric fixes (TL-16, TL-29, TL-31)**: `crps_decomposition` includes Hersbach's outlier segments (an observation far outside the intervals no longer contributes almost nothing); `embedding_separability` excludes self-pairs from the within-class distance; `centered_kernel_alignment` is scale-invariant again; `brier_score` docstring example corrected (0.048); CRPS grid-bias direction corrected in the docs; methodology weights are rounded instead of truncated.
 
 ### Documentation
+- The docs build with `sphinx -W` (the `[docs]` extra gains `sphinxcontrib-mermaid`; the conformal page is in the toctree). The API reference covers `quick_analyze`, `compare`, `compute_trust_score`, `regression_trust_score` and the results contract. README drops the hard-coded test-count and coverage badges; ROADMAP and SECURITY.md are corrected (TL-21, TL-22).
+- ROADMAP no longer marks tqdm progress bars, subgroup ECE, Keras/TensorFlow support, a video series or Colab badges as done; the API reference opens with an autosummary table of `trustlens.__all__` (GB-14).
+- Added `audit/2026-09-trustlens-audit.md` (31 findings with reproduction scripts) and ADR-001 *Trust Score methodology contract* (`docs/adr/`).
 
 ### Changed
+- **Trust Score methodology 2.0 (`score_version = "2.0"`)**. The classification score is now the weighted mean of the assessed sub-scores, followed by blockers and caps. Each signal is counted once; the regression score keeps its dimensions but loses the second weak-correlation penalty (TL-09). See `docs/trust_score_explained.md` (formulas plus a v0.5.0 → 2.0 table for reference models) and ADR-001.
+  - Calibration is scored from ECE (`100 × clip(1 − ECE/0.25)`); multiclass Brier is reported but no longer scored (TL-05).
+  - Failure is scored from the new error-detection AUROC (`trustlens.metrics.failure.error_detection_auroc`) plus 20% accuracy (TL-01).
+  - Bias is scored only when `sensitive_features` are supplied, from the largest fairness gap; class imbalance is reported, not scored (TL-15).
+  - Blockers (grade D, score ≤ 39): no predictive skill (accuracy not above the majority baseline), overconfidence error > 0.10 (new `trustlens.metrics.calibration.overconfidence_error`), fairness gap > 0.15. Underconfidence no longer blocks.
+  - Caps (grade C, score ≤ 59): partial assessment or any sub-score below 40. The grade now always matches the score band; `base_score` keeps the uncapped score.
+  - New `TrustScoreResult` fields: `blockers`, `caps_applied`, `score_version`. Grade `N/A` with deployment verdict `INSUFFICIENT_EVIDENCE` when nothing could be scored. `penalties_applied` is always empty (deprecated).
+  - Custom weights with unknown keys or negative values raise `ValueError` (TL-28).
+  - `compare()` accepts `names=`, returns a structured result (`recommended`, `ranking`, `excluded`, `warnings`) and ranks by score with each candidate's weakest dimension instead of penalty burden (TL-11).
+  - Grade A verdict reads "High Trust - no critical issues detected" instead of "production-ready"; README claims toned down (TL-23).
+  - Independent review hardening: the no-skill blocker needs uninformative confidence (error-detection AUROC < 0.6) and two classes in `y_true`, otherwise it caps at C; the overconfidence blocker needs at least 100 samples, otherwise it caps at C; results saved before 2.0 warn and carry `score_version="2.0-legacy-input"`; top-label measures (ECE, overconfidence, error-detection AUROC) judge `argmax(y_prob)` with confidence `max(y_prob)`, and a warning is logged whenever `y_pred` differs from the argmax (also for integer labels, catching swapped probability columns); zero total weight raises; `compare()` rejects duplicate names and warns on ties; report narratives for N/A and skipped modules no longer contradict the verdict.
+- **Trust Score methodology 2.1 (`score_version = "2.1"`)**, after independent verification:
+  - The failure sub-score weighs undetectable errors by their frequency: `100 × (1 − clip(error_rate/0.20) × (1 − detection))`. One error in 1,000 no longer drops a 98/A model to 59/C (GA-01).
+  - Ceiling ramps lead continuously into the overconfidence (0.05 → 0.10) and fairness-gap (0.10 → 0.15) blockers, and the weak-dimension cap becomes a ramp (40 → 30). Crossing a threshold no longer makes the score jump from A/B to D (GA-02).
+  - `caps_applied` lists only the limits that actually lowered the score.
+  - `tests/reference/test_published_table.py` recomputes the published before/after table from the docs.
+- **Score changes from the fixes above**: Trust Scores change for models affected by TL-01, TL-02, TL-04 and TL-06. Stored reports keep their stored scores; recomputing them can give different values. Characterization baselines were regenerated (only the failure sub-score and derived values moved).
+- **Behaviour change**: callers that relied on `tpr == 0.0` / `fpr == 0.0` for groups without positives / negatives must handle `None`.
+- **Architecture (TL-17, TL-18, TL-30)**: `TrustReport` is split into mixins under `trustlens/_report/` (public API unchanged; `report.py` shrinks from 2,170 to about 330 lines); `trustlens/results_schema.py` documents the results dict as TypedDicts with a `check_results_contract()` checker used in tests; brand colours move to `trustlens._palette`, so `import trustlens` no longer loads matplotlib; framework detection matches the top-level package exactly; a mypy strictness ratchet covers the new modules.
+- **CI (TL-24)**: actions pinned to commit SHAs with Dependabot; pip-audit ignores live in `.github/pip-audit-ignore.txt` with reason and expiry, checked by `scripts/check_audit_ignores.py`; the security job's unquoted `mistune>=3.2.1` (a shell redirect) is fixed; new CI jobs build the docs with `-W` and run all examples from an empty directory; mypy runs with one configuration everywhere.
+- **Maintainability after independent verification**:
+  - All HTML output escapes through one helper, `trustlens._report.html.escape_text`; the TrustScoreResult HTML card moved out of the scoring module, and colours live in `trustlens._palette` (no matplotlib import needed for HTML) (GB-09).
+  - The report modules and `trustlens.core.inputs` are type-checked with strict mypy flags (GB-13).
+  - pip-audit ignore entries carry OSV-reviewed, code-specific reasons; the expiry checker also accepts GHSA identifiers (GB-07).
+  - Docstring examples run in CI (`pytest trustlens --doctest-modules`); the ECE, PICP and `analyze()` examples are executable with checked outputs, illustrative snippets are marked `+SKIP` (GB-11).
+  - A Notebooks workflow executes `examples/*.ipynb` weekly and on notebook changes (`scripts/run_notebooks.py`, new `[notebooks]` extra). The demo notebook no longer calls `Figure.show()` on a closed figure and the model-zoo notebook creates its `output/` folder (GB-15).
+- **Test safety net**: `tests/invariants/` (score properties) and `tests/reference/` (deterministic sklearn reference models with expected grade bands) guard the methodology; remaining known defects are tracked as strict xfails tagged with their issue id.
 - **Unusable-uncertainty scoring for the regression Trust Score**: When multi-level prediction intervals are supplied but *no* level passes the calibration gate (and no error-variance correlation fallback exists), the Uncertainty Informativeness dimension is now scored a truthful `0.0` — "the supplied uncertainty delivered zero usable resolution" — instead of being dropped and having its weight redistributed onto the other dimensions. A new `TrustScoreResult.informativeness_status` field (`"present"` / `"unusable_uncertainty"` / `"absent"`, `None` for classification) lets downstream consumers distinguish "0.0 because the intervals were all miscalibrated" from "dropped because none were supplied." Scoped to the multi-level path (`n_levels >= 2`); the single-level PICP path keeps the existing redistribute behavior. (refs #155, #161) Thanks @Whatsonyourmind
 
 ### Improvements

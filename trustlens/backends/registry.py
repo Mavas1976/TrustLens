@@ -136,11 +136,13 @@ def detect_framework(model: Any, framework: Optional[str] = None) -> str:
         )
 
     # 2. Module-name inspection
-    module_name = getattr(type(model), "__module__", "")
-    if module_name:
-        for prefix, identifier in FRAMEWORK_MAPPING.items():
-            if module_name.startswith(prefix):
-                return identifier
+    # Compare the top-level package exactly: a prefix match would map
+    # packages such as "sklearn_extra" or "torchvision" to the wrong
+    # framework (TL-30 / ARCH-05).
+    module_name = getattr(type(model), "__module__", "") or ""
+    top_level = module_name.split(".")[0]
+    if top_level in FRAMEWORK_MAPPING:
+        return FRAMEWORK_MAPPING[top_level]
 
     # 3. Capability fallback (conservative)
     if hasattr(model, "predict") or hasattr(model, "predict_proba"):

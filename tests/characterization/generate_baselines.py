@@ -68,6 +68,11 @@ def generate_baselines():
                 "grade": report.trust_score.grade,
                 "sub_scores": report.trust_score.sub_scores,
                 "penalties": report.trust_score.penalties_applied,
+                "base_score": report.trust_score.base_score,
+                "is_blocked": report.trust_score.is_blocked,
+                "blockers": report.trust_score.blockers,
+                "caps_applied": report.trust_score.caps_applied,
+                "score_version": report.trust_score.score_version,
             },
             "metadata": {
                 "n_samples": report.metadata["n_samples"],
@@ -79,6 +84,7 @@ def generate_baselines():
     output_path = "tests/characterization/baselines.json"
     with open(output_path, "w") as f:
         json.dump(baselines, f, indent=2, cls=NpEncoder)
+        f.write("\n")  # keep the end-of-file-fixer pre-commit hook satisfied
 
     print(f"Baselines saved to {output_path}")
 

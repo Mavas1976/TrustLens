@@ -1,0 +1,35 @@
+stdout chars printed by analyze(verbose=False): 85 'Running calibration analysis...\nRunning failure analysis...\nRunning bias analysis...\n'
+LOG WARNING matplotlib.font_manager: findfont: Failed to find font weight semibold for DejaVu Sans, now using 700.
+XSS raw tag in _repr_html_: False
+rcParams diff after _repr_html_: {}
+open figs after _repr_html_: 0
+to_dict json OK, keys 63
+save json -> /tmp/claude-0/-home-user-TrustLens/0f196e07-2709-523e-9f89-b85e2a6f37bb/scratchpad/wp2/out_a.json
+save again same path (overwrite silently?) -> /tmp/claude-0/-home-user-TrustLens/0f196e07-2709-523e-9f89-b85e2a6f37bb/scratchpad/wp2/out_a.json
+LOG WARNING matplotlib.font_manager: findfont: Failed to find font weight semibold for DejaVu Sans, now using 700.
+bundle -> ['bias_plot.png', 'calibration_plot.png', 'failure_plot.png', 'metadata.json', 'report.json', 'summary_plot.png', 'trust_score.json']
+save .PNG path -> /tmp/claude-0/-home-user-TrustLens/0f196e07-2709-523e-9f89-b85e2a6f37bb/scratchpad/wp2/report.PNG isdir True
+traversal path -> /tmp/claude-0/-home-user-TrustLens/0f196e07-2709-523e-9f89-b85e2a6f37bb/scratchpad/wp2/trav.json
+open figs after save: 0
+open figs after 5x analyze+summary_plot: 0
+open figs after r.plot(): 0
+modules typo: results keys [] score 0 D verdict Low Trust - serious issues, do not deploy sub {}
+compare output:
+========== Model Comparison & Recommendation ==========
+LogisticRegression Score:  56/100 | Verdict: Low Trust - Blocked by high diagnostic risk (misaligned confidence-weighted error distribution)
+LogisticRegression Score:   0/100 | Verdict: Low Trust - serious issues, do not deploy
+
+Recommendation: Deploy LogisticRegression.
+  * Maintains highest overall Trust Score without critical deployment blocks.
+  * Comparative Advantage: LogisticRegression over LogisticRegression
+    - Lower penalty burden (-0.0 vs -12.4)
+    - Primarily due to LogisticRegression's failure risks + calibration risks.
+    - Note: LogisticRegression was filtered out due to active diagnostic blocks (Low Trust - Blocked by high diagnostic risk (misaligned confidence-weighted error distribution)).
+
+
+regression task regression 92 html len 1301
+regression to_dict json OK
+/tmp/claude-0/-home-user-TrustLens/0f196e07-2709-523e-9f89-b85e2a6f37bb/scratchpad/wp2/reg.json
+perf n=20000: analyze 0.06s save.json 0.00s size 5928B
+perf n=200000: analyze 0.35s save.json 0.00s size 5968B
+matplotlib imported by trustlens import: True

@@ -9,12 +9,30 @@ Inputs are expected to come from ``report.results["bias"]``.
 
 from __future__ import annotations
 
+import math
 import os
 import re
 
 import matplotlib.pyplot as plt
 
-from trustlens.visualization.style import apply_style, get_categorical_colors
+from trustlens.visualization.style import apply_style, get_categorical_colors, save_figure
+
+
+def _rate_or_nan(value: float | None) -> float:
+    """Map an undefined rate or gap (``None``) to NaN so no bar is drawn."""
+    return float("nan") if value is None else float(value)
+
+
+def _fmt_gap(value: float | None) -> str:
+    """Format a rate or gap for a label; undefined values read ``n/a``."""
+    if value is None or math.isnan(value):
+        return "n/a"
+    return f"{value:.3f}"
+
+
+def _label_y(bar) -> float:
+    height = bar.get_height()
+    return (0.0 if math.isnan(height) else height) + 0.005
 
 
 def _safe_name(s: str) -> str:
@@ -99,8 +117,8 @@ def plot_subgroup_performance(
 
     Examples
     --------
-    >>> results = subgroup_performance(y_true, y_pred, {"gender": gender})
-    >>> fig = plot_subgroup_performance(results["gender"], "gender")
+    >>> results = subgroup_performance(y_true, y_pred, {"gender": gender})  # doctest: +SKIP
+    >>> fig = plot_subgroup_performance(results["gender"], "gender")  # doctest: +SKIP
     """
     with apply_style() as theme:
         groups = [g for g in subgroup_data if g != "__summary__"]
@@ -162,7 +180,7 @@ def plot_subgroup_performance(
         ax.grid(axis="y", alpha=0.35)
 
         if save_path:
-            fig.savefig(save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
+            save_figure(fig, save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
         if show:
             if "agg" not in plt.get_backend().lower():
                 plt.show()
@@ -206,15 +224,17 @@ def plot_equalized_odds(
 
     Examples
     --------
-    >>> results = equalized_odds(y_true, y_pred, {"gender": gender})
-    >>> fig = plot_equalized_odds(results["gender"], "gender")
+    >>> results = equalized_odds(y_true, y_pred, {"gender": gender})  # doctest: +SKIP
+    >>> fig = plot_equalized_odds(results["gender"], "gender")  # doctest: +SKIP
     """
     with apply_style() as theme:
         import numpy as np
 
         groups = [g for g in equalized_odds_data if g != "__summary__"]
-        tpr_values = [equalized_odds_data[g]["tpr"] for g in groups]
-        fpr_values = [equalized_odds_data[g]["fpr"] for g in groups]
+        # Undefined rates (no positives / no negatives in a group) are None; NaN
+        # draws no bar instead of a misleading zero.
+        tpr_values = [_rate_or_nan(equalized_odds_data[g]["tpr"]) for g in groups]
+        fpr_values = [_rate_or_nan(equalized_odds_data[g]["fpr"]) for g in groups]
 
         x = np.arange(len(groups))
         width = 0.35
@@ -246,8 +266,8 @@ def plot_equalized_odds(
         for bar, val in zip(bars_tpr, tpr_values):
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 0.01,
-                f"{val:.3f}",
+                _label_y(bar) + 0.005,
+                _fmt_gap(val),
                 ha="center",
                 va="bottom",
                 fontsize=10,
@@ -256,8 +276,8 @@ def plot_equalized_odds(
         for bar, val in zip(bars_fpr, fpr_values):
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 0.01,
-                f"{val:.3f}",
+                _label_y(bar) + 0.005,
+                _fmt_gap(val),
                 ha="center",
                 va="bottom",
                 fontsize=10,
@@ -272,7 +292,7 @@ def plot_equalized_odds(
             ax.text(
                 0.97,
                 0.97,
-                f"TPR gap = {tpr_gap:.3f}  |  FPR gap = {fpr_gap:.3f}",
+                f"TPR gap = {_fmt_gap(tpr_gap)}  |  FPR gap = {_fmt_gap(fpr_gap)}",
                 transform=ax.transAxes,
                 fontsize=10,
                 ha="right",
@@ -298,7 +318,7 @@ def plot_equalized_odds(
         ax.grid(axis="y", alpha=0.35)
 
         if save_path:
-            fig.savefig(save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
+            save_figure(fig, save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
         if show:
             if "agg" not in plt.get_backend().lower():
                 plt.show()
@@ -339,8 +359,8 @@ def plot_fairness_gap(
 
     Examples
     --------
-    >>> results = equalized_odds(y_true, y_pred, {"gender": gender})
-    >>> fig = plot_fairness_gap(results["gender"], "gender")
+    >>> results = equalized_odds(y_true, y_pred, {"gender": gender})  # doctest: +SKIP
+    >>> fig = plot_fairness_gap(results["gender"], "gender")  # doctest: +SKIP
     """
     with apply_style() as theme:
         summary = equalized_odds_data.get("__summary__", {})
@@ -348,7 +368,7 @@ def plot_fairness_gap(
         fpr_gap = summary.get("fpr_gap", 0.0)
 
         labels = ["TPR Gap", "FPR Gap"]
-        values = [tpr_gap, fpr_gap]
+        values = [_rate_or_nan(tpr_gap), _rate_or_nan(fpr_gap)]
         colors = [theme.brand["blue"], theme.brand["orange"]]
 
         fig, ax = plt.subplots(figsize=(6, 5), constrained_layout=True)
@@ -365,8 +385,8 @@ def plot_fairness_gap(
         for bar, val in zip(bars, values):
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 0.005,
-                f"{val:.3f}",
+                _label_y(bar),
+                _fmt_gap(val),
                 ha="center",
                 va="bottom",
                 fontsize=12,
@@ -398,7 +418,7 @@ def plot_fairness_gap(
         ax.grid(axis="y", alpha=0.35)
 
         if save_path:
-            fig.savefig(save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
+            save_figure(fig, save_path, dpi=theme.fig_defaults["savefig_dpi"], bbox_inches="tight")
         if show:
             if "agg" not in plt.get_backend().lower():
                 plt.show()
@@ -447,9 +467,9 @@ def plot_subgroup_performance_multi(
 
     Examples
     --------
-    >>> results = subgroup_performance(y_true, y_pred, sensitive_features)
-    >>> figs = plot_subgroup_performance_multi(results)
-    >>> fig_gender = figs["gender"]
+    >>> results = subgroup_performance(y_true, y_pred, sensitive_features)  # doctest: +SKIP
+    >>> figs = plot_subgroup_performance_multi(results)  # doctest: +SKIP
+    >>> fig_gender = figs["gender"]  # doctest: +SKIP
     """
     return _plot_multi_helper(
         subgroup_data,
@@ -493,9 +513,9 @@ def plot_equalized_odds_multi(
 
     Examples
     --------
-    >>> results = equalized_odds(y_true, y_pred, sensitive_features)
-    >>> figs = plot_equalized_odds_multi(results)
-    >>> fig_age = figs["age"]
+    >>> results = equalized_odds(y_true, y_pred, sensitive_features)  # doctest: +SKIP
+    >>> figs = plot_equalized_odds_multi(results)  # doctest: +SKIP
+    >>> fig_age = figs["age"]  # doctest: +SKIP
     """
     return _plot_multi_helper(
         equalized_odds_data,
@@ -538,9 +558,9 @@ def plot_fairness_gap_multi(
 
     Examples
     --------
-    >>> results = equalized_odds(y_true, y_pred, sensitive_features)
-    >>> figs = plot_fairness_gap_multi(results)
-    >>> fig_gender = figs["gender"]
+    >>> results = equalized_odds(y_true, y_pred, sensitive_features)  # doctest: +SKIP
+    >>> figs = plot_fairness_gap_multi(results)  # doctest: +SKIP
+    >>> fig_gender = figs["gender"]  # doctest: +SKIP
     """
     return _plot_multi_helper(
         equalized_odds_data,

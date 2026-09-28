@@ -21,7 +21,7 @@ TrustLens evaluates models across four dimensions:
 - **Bias and fairness**: do important subgroups see uneven performance?
 - **Representation quality**: are embeddings well separated when provided?
 
-These diagnostics are combined into a Trust Score, with penalties and blocker rules applied for high-risk conditions.
+These diagnostics are combined into a Trust Score: a weighted mean of the assessed dimensions, with blockers and caps for high-risk or incomplete assessments.
 
 ## Typical Workflow
 

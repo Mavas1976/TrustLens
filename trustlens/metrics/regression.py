@@ -89,8 +89,8 @@ def error_distribution(
 
     Examples
     --------
-    >>> dist = error_distribution(y_true, y_pred)
-    >>> print(f"MedAE: {dist['median_absolute_error']}, p90: {dist['p90_absolute_error']}")
+    >>> dist = error_distribution(y_true, y_pred)  # doctest: +SKIP
+    >>> print(f"MedAE: {dist['median_absolute_error']}, p90: {dist['p90_absolute_error']}")  # doctest: +SKIP
     """
     y_true = np.asarray(y_true, dtype=float)
     y_pred = np.asarray(y_pred, dtype=float)
@@ -108,12 +108,15 @@ def error_distribution(
     bins = np.linspace(0.0, upper if upper > 0 else 1.0, n_bins + 1)
     error_hist, _ = np.histogram(abs_err, bins=bins)
 
+    # Unrounded on purpose: the regression Trust Score is computed from these
+    # values, and rounding to fixed decimals made it depend on the target's unit
+    # (TL-04). Displays format them instead.
     return {
-        "median_absolute_error": round(float(np.median(abs_err)), 4),
-        "p90_absolute_error": round(float(np.percentile(abs_err, 90)), 4),
-        "max_error": round(upper, 4),
-        "mean_absolute_error": round(float(abs_err.mean()), 4),
-        "rmse": round(float(np.sqrt(np.mean((y_true - y_pred) ** 2))), 4),
+        "median_absolute_error": float(np.median(abs_err)),
+        "p90_absolute_error": float(np.percentile(abs_err, 90)),
+        "max_error": upper,
+        "mean_absolute_error": float(abs_err.mean()),
+        "rmse": float(np.sqrt(np.mean((y_true - y_pred) ** 2))),
         "histogram_bins": bins,
         "error_hist": error_hist,
         "n_samples": int(abs_err.size),
@@ -181,7 +184,12 @@ def prediction_interval_coverage(
 
     Examples
     --------
-    >>> prediction_interval_coverage(y_true, lo, hi, confidence_level=0.9)["picp"]
+    >>> import numpy as np
+    >>> y_true = np.array([1.0, 2.0, 3.0, 4.0])
+    >>> lo = np.array([0.5, 1.5, 3.5, 3.0])
+    >>> hi = np.array([1.5, 2.5, 4.0, 5.0])
+    >>> float(prediction_interval_coverage(y_true, lo, hi, confidence_level=0.9)["picp"])
+    0.75
     """
     if lower is None or upper is None:
         return {
@@ -304,8 +312,8 @@ def multilevel_interval_coverage(
 
     Examples
     --------
-    >>> ivs = {0.5: (lo50, hi50), 0.9: (lo90, hi90)}
-    >>> multilevel_interval_coverage(y_true, ivs)["ice"]
+    >>> ivs = {0.5: (lo50, hi50), 0.9: (lo90, hi90)}  # doctest: +SKIP
+    >>> multilevel_interval_coverage(y_true, ivs)["ice"]  # doctest: +SKIP
     """
     if not intervals:
         return {
@@ -498,9 +506,9 @@ def crps_from_intervals(
     Limitations
     -----------
     The estimate is *grid-dependent*: it integrates only over the quantile levels
-    the intervals span, so a coarse or narrow grid biases CRPS upward (the tails
-    beyond the outermost levels are truncated). Against a closed-form Gaussian a
-    3-level grid runs ~17% high while a 19-level grid is <1%. ``n_quantile_levels``
+    the intervals span, so a coarse or narrow grid biases CRPS *downward* (the
+    tails beyond the outermost levels are truncated). Against a closed-form
+    Gaussian a 3-level grid runs about 11% low while a 19-level grid is within 1%. ``n_quantile_levels``
     and ``quantile_level_span`` are returned so the density is visible; prefer a
     dense grid (>= ~9 interval levels) for a trustworthy value. Quantile crossing
     (non-nested intervals) is repaired by sorting each sample's quantiles ascending
@@ -538,8 +546,8 @@ def crps_from_intervals(
 
     Examples
     --------
-    >>> ivs = {0.5: (lo50, hi50), 0.8: (lo80, hi80), 0.95: (lo95, hi95)}
-    >>> crps_from_intervals(y_true, ivs)["mean_crps"]
+    >>> ivs = {0.5: (lo50, hi50), 0.8: (lo80, hi80), 0.95: (lo95, hi95)}  # doctest: +SKIP
+    >>> crps_from_intervals(y_true, ivs)["mean_crps"]  # doctest: +SKIP
     """
     if not intervals:
         return {
@@ -598,6 +606,13 @@ def _hersbach_terms(
       * ``crps_potential  = sum_i g_i o_i (1 - o_i)``  (best CRPS at this resolution)
       * ``crps_recon      = sum_i (abar_i p_i^2 + bbar_i (1 - p_i)^2)``
 
+    Observations outside the outermost quantiles are covered by Hersbach's two
+    outlier segments (TL-16): below the lowest quantile the forecast level is
+    ``alpha_0`` with the whole gap lying above the observation; above the highest
+    it is ``alpha_last`` with the gap below. Without them an observation far
+    outside the intervals contributed almost nothing (CRPS 1.0 instead of about
+    94 for ``y = 100`` against N(0, 1) intervals).
+
     Returns ``(reliability, crps_potential, crps_recon)`` with the exact algebraic
     identity ``crps_recon == reliability + crps_potential``.
     """
@@ -615,7 +630,13 @@ def _hersbach_terms(
     crps_potential = float(np.sum(g * o * (1.0 - o)))
     pc = p[:, np.newaxis]
     crps_recon = float(np.mean(np.sum(below * pc**2 + above * (1.0 - pc) ** 2, axis=0)))
-    return reliability, crps_potential, crps_recon
+
+    # Outlier segments: o is 1 below the lowest quantile and 0 above the highest,
+    # so they add only to reliability (and the reconstruction), never to potential.
+    low_gap = float(np.mean(np.clip(quantiles[0] - y_true, 0.0, None)))
+    high_gap = float(np.mean(np.clip(y_true - quantiles[-1], 0.0, None)))
+    tails = low_gap * (1.0 - alphas[0]) ** 2 + high_gap * alphas[-1] ** 2
+    return reliability + tails, crps_potential, crps_recon + tails
 
 
 def _empirical_climatology_quantiles(y_true: np.ndarray, alphas: np.ndarray) -> np.ndarray:
@@ -699,9 +720,9 @@ def crps_decomposition(
 
     Examples
     --------
-    >>> ivs = {0.5: (lo50, hi50), 0.8: (lo80, hi80), 0.95: (lo95, hi95)}
-    >>> d = crps_decomposition(y_true, ivs)
-    >>> d["reliability"], d["resolution"], d["uncertainty"]
+    >>> ivs = {0.5: (lo50, hi50), 0.8: (lo80, hi80), 0.95: (lo95, hi95)}  # doctest: +SKIP
+    >>> d = crps_decomposition(y_true, ivs)  # doctest: +SKIP
+    >>> d["reliability"], d["resolution"], d["uncertainty"]  # doctest: +SKIP
     """
     if not intervals:
         return {
@@ -820,7 +841,7 @@ def error_variance_correlation(
 
     Examples
     --------
-    >>> error_variance_correlation(y_true, y_pred, variance)["spearman"]
+    >>> error_variance_correlation(y_true, y_pred, variance)["spearman"]  # doctest: +SKIP
     """
     if predicted_variance is None:
         return {

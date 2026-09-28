@@ -86,8 +86,8 @@ def embedding_separability(
 
     Examples
     --------
-    >>> sep = embedding_separability(embeddings, y_true)
-    >>> print(f"Silhouette: {sep['silhouette_score']:.3f}")
+    >>> sep = embedding_separability(embeddings, y_true)  # doctest: +SKIP
+    >>> print(f"Silhouette: {sep['silhouette_score']:.3f}")  # doctest: +SKIP
     """
     embeddings = np.asarray(embeddings, dtype=float)
     y_true = np.asarray(y_true)
@@ -126,8 +126,11 @@ def embedding_separability(
 
         if len(in_cls) >= 2:
             pairs = min(max_pairs, len(in_cls) * (len(in_cls) - 1) // 2)
+            # Sample distinct pairs (i != j): self-pairs have distance 0 and
+            # biased the within-class distance low (TL-29).
             idx_a = rng.integers(0, len(in_cls), pairs)
-            idx_b = rng.integers(0, len(in_cls), pairs)
+            idx_b = rng.integers(0, len(in_cls) - 1, pairs)
+            idx_b = idx_b + (idx_b >= idx_a)
             diff = in_cls[idx_a] - in_cls[idx_b]
             within_dists.extend(np.linalg.norm(diff, axis=1).tolist())
 
@@ -187,8 +190,8 @@ def centered_kernel_alignment(
 
     Examples
     --------
-    >>> cka = centered_kernel_alignment(layer1_embeddings, layer2_embeddings)
-    >>> print(f"CKA similarity: {cka:.3f}")
+    >>> cka = centered_kernel_alignment(layer1_embeddings, layer2_embeddings)  # doctest: +SKIP
+    >>> print(f"CKA similarity: {cka:.3f}")  # doctest: +SKIP
     """
     X = np.asarray(X, dtype=float)
     Y = np.asarray(Y, dtype=float)
@@ -197,6 +200,18 @@ def centered_kernel_alignment(
         raise ValueError(
             f"X and Y must have the same number of samples, got {X.shape[0]} and {Y.shape[0]}."
         )
+
+    # CKA is invariant to translation and scale. Centering the features and
+    # then normalising keeps the absolute degeneracy threshold below from
+    # zeroing small-magnitude or offset embeddings (TL-29, GB-10).
+    X = X - X.mean(axis=0, keepdims=True)
+    Y = Y - Y.mean(axis=0, keepdims=True)
+    x_norm = float(np.linalg.norm(X))
+    y_norm = float(np.linalg.norm(Y))
+    if x_norm == 0.0 or y_norm == 0.0:
+        return 0.0
+    X = X / x_norm
+    Y = Y / y_norm
 
     # Linear kernel matrices
     K = X @ X.T

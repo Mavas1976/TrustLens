@@ -229,24 +229,15 @@ def test_heavy_tail_docks_accuracy_dimension():
     assert heavy.score < light.score
 
 
-def test_weak_uncertainty_correlation_penalizes_composite():
+def test_weak_uncertainty_correlation_is_counted_once():
+    """Methodology 2.0 (TL-09): weak correlation lowers Informativeness only."""
     strong = regression_trust_score(_results(_ed(0.9), _cov(0.0), _corr(0.9)), Y)
     weak = regression_trust_score(_results(_ed(0.9), _cov(0.0), _corr(0.0)), Y)
-    assert "Weak Uncertainty" in weak.penalties_applied
-    # corr 0 -> full penalty.
-    assert weak.penalties_applied["Weak Uncertainty"] == pytest.approx(15.0, abs=0.1)
-    # Double hit: the informativeness sub-score is also 0 here.
     assert weak.sub_scores["uncertainty_informativeness"] == pytest.approx(0.0)
+    assert weak.penalties_applied == {}
     assert weak.score < strong.score
-    # No weak-corr penalty when no uncertainty signal is present at all.
-    point_only = regression_trust_score(_results(_ed(0.9)), Y)
-    assert "Weak Uncertainty" not in point_only.penalties_applied
-
-
-def test_strong_correlation_no_penalty():
-    r = regression_trust_score(_results(_ed(0.9), _cov(0.0), _corr(0.5)), Y)
-    # corr exactly at the informative boundary -> no penalty.
-    assert "Weak Uncertainty" not in r.penalties_applied
+    # The score is exactly the weighted mean of the sub-scores: no second hit.
+    assert weak.base_score == round(sum(weak.breakdown.values()))
 
 
 # ---------------------------------------------------------------------------

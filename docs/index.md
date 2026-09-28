@@ -95,6 +95,7 @@ EXPERIMENTAL
 FUTURE_EXTENSIONS
 PAGE_TEMPLATE
 internal/prediction_contract
+adr/ADR-001-trust-score-methodology
 plans/IMPLEMENTATION_PLAN_XGBoost
 plans/IMPLEMENTATION_PLAN_Keras
 plans/IMPLEMENTATION_PLAN_TensorFlow

@@ -1,5 +1,8 @@
 # Trust Score Validation
 
+> [!NOTE]
+> **Methodology version:** the results on this page were produced with Trust Score methodology 1.x (TrustLens v0.5.0) and have not been re-run under methodology 2.0. Scores and grades differ under 2.0; see [Trust Score Explained](../trust_score_explained.md) and [ADR-001](../adr/ADR-001-trust-score-methodology.md).
+
 This document provides the scientific defense of the TrustLens Trust Score, detailing why predictive accuracy is insufficient for production deployment and how the Trust Score acts as a multi-dimensional safeguard.
 
 > [!NOTE]

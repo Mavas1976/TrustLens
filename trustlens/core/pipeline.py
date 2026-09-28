@@ -34,11 +34,13 @@ from trustlens.metrics.calibration import (
     brier_score,
     expected_calibration_error,
     maximum_calibration_error,
+    overconfidence_error,
     reliability_curve,
 )
 from trustlens.metrics.conformal import conformal_diagnostics
 from trustlens.metrics.failure import (
     confidence_gap,
+    error_detection_auroc,
     misclassification_summary,
 )
 from trustlens.metrics.regression import (
@@ -54,6 +56,116 @@ from trustlens.plugins.registry import PluginRegistry
 from trustlens.report import TrustReport
 
 logger = logging.getLogger(__name__)
+
+
+# Subgroups smaller than this carry too little evidence for a fairness gap: they
+# are reported with ``low_support`` and excluded from gaps (ADR-001, TL-06).
+_MIN_FAIRNESS_GROUP_SIZE = 30
+
+
+def _argmax_labels(y_prob: np.ndarray, class_labels: Optional[np.ndarray]) -> np.ndarray:
+    """Labels of the most probable class per sample, in the label space of y_true.
+
+    Top-label calibration and error detection judge the probabilities'
+    own prediction ``argmax(y_prob)``, not a separately thresholded ``y_pred``
+    (TL-14). Without ``class_labels`` the labels are the column indices, which
+    the label encoder already requires in that case.
+    """
+    index = np.argmax(y_prob, axis=1) if y_prob.ndim == 2 else (y_prob >= 0.5).astype(int)
+    if class_labels is not None and len(class_labels) == (
+        y_prob.shape[1] if y_prob.ndim == 2 else 2
+    ):
+        return cast(np.ndarray, np.asarray(class_labels)[index])
+    return cast(np.ndarray, index)
+
+
+def _top_label_overconfidence(
+    y_true: np.ndarray, top_label: np.ndarray, y_prob: np.ndarray
+) -> float:
+    """Overconfidence error of the top-label prediction against its confidence ``max(y_prob)``."""
+    confidence = np.max(y_prob, axis=1) if y_prob.ndim == 2 else np.maximum(y_prob, 1.0 - y_prob)
+    return overconfidence_error(
+        (np.asarray(y_true) == np.asarray(top_label)).astype(float), confidence
+    )
+
+
+def _warn_if_pred_differs_from_argmax(y_pred: np.ndarray, top_label: np.ndarray) -> None:
+    """Say so when the reported decisions are not the most probable class."""
+    share = float(np.mean(np.asarray(top_label) != np.asarray(y_pred)))
+    if share > 0.01:
+        logger.warning(
+            "y_pred differs from argmax(y_prob) for %.1f%% of samples. Accuracy and error "
+            "rates describe y_pred; confidence-based metrics (top-label ECE, overconfidence, "
+            "error-detection AUROC) describe argmax(y_prob). Check that probability columns "
+            "are in class order.",
+            100 * share,
+        )
+
+
+def _binary_codes(
+    y_true: np.ndarray, y_pred: np.ndarray, class_labels: Optional[np.ndarray]
+) -> Optional[tuple[np.ndarray, np.ndarray]]:
+    """Map a two-label problem to 0/1 for equalized odds; None if not binary."""
+    labels = np.unique(np.concatenate([np.asarray(y_true), np.asarray(y_pred)]))
+    if len(labels) != 2:
+        return None
+    if class_labels is not None and len(class_labels) == 2:
+        positive = np.asarray(class_labels)[1]
+    else:
+        positive = labels[1]
+    return (
+        (np.asarray(y_true) == positive).astype(int),
+        (np.asarray(y_pred) == positive).astype(int),
+    )
+
+
+def _encode_prediction_sets(y_pred_sets: Any, class_labels: Optional[np.ndarray]) -> Any:
+    """Translate ragged sets of semantic labels to probability-column indices (GA-08).
+
+    Membership matrices are already column-indexed. Label lists are mapped only
+    when every element is one of ``class_labels``; otherwise they are assumed to
+    hold column indices already.
+    """
+    if class_labels is None or (isinstance(y_pred_sets, np.ndarray) and y_pred_sets.ndim == 2):
+        return y_pred_sets
+    index = {_as_python_label(label): i for i, label in enumerate(np.asarray(class_labels))}
+    try:
+        members = [_as_python_label(v) for row in y_pred_sets for v in row]
+    except TypeError:
+        return y_pred_sets
+    if (
+        members
+        and all(m in index for m in members)
+        and not all(isinstance(m, (int, np.integer)) and index.get(m) == m for m in members)
+    ):
+        return [[index[_as_python_label(v)] for v in row] for row in y_pred_sets]
+    return y_pred_sets
+
+
+def _warn_on_low_support(subgroups: dict[str, Any]) -> None:
+    """Make excluded low-support groups visible instead of silently dropping them (GA-04)."""
+    for feature, data in subgroups.items():
+        excluded = (
+            data.get("__summary__", {}).get("excluded_groups") if isinstance(data, dict) else None
+        )
+        if excluded:
+            logger.warning(
+                "sensitive_features['%s']: group(s) %s have fewer than %d samples and are "
+                "excluded from fairness gaps.",
+                feature,
+                excluded,
+                _MIN_FAIRNESS_GROUP_SIZE,
+            )
+
+
+def _accuracy_and_baseline(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
+    """Accuracy and the majority-class baseline it must beat to show skill."""
+    _, counts = np.unique(y_true, return_counts=True)
+    return {
+        "accuracy": round(float(np.mean(y_true == y_pred)), 6),
+        "baseline_accuracy": round(float(counts.max() / counts.sum()), 6),
+        "n_samples": int(len(y_true)),
+    }
 
 
 def _as_python_label(label: Any) -> Any:
@@ -88,7 +200,21 @@ def _encode_labels_for_probability_columns(
         except KeyError as exc:
             raise ValueError("y_true contains labels that are missing from class_labels.") from exc
 
-    return y_true.astype(int)
+    hint = "Pass class_labels=[...] in the order of the probability columns (e.g. model.classes_)."
+    try:
+        encoded = np.asarray(y_true).astype(int)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"y_true has non-integer labels. {hint}") from exc
+    if encoded.size and (
+        encoded.min() < 0
+        or encoded.max() >= n_classes
+        or not np.array_equal(encoded, np.asarray(y_true))
+    ):
+        raise ValueError(
+            f"y_true labels do not index the {n_classes} probability columns (0..{n_classes - 1}). "
+            + hint
+        )
+    return encoded
 
 
 def _run_analysis_pipeline(
@@ -126,7 +252,16 @@ def _run_analysis_pipeline(
     # 1. Determine which modules to run
     # ------------------------------------------------------------------
     _ALL_MODULES = ["calibration", "failure", "bias", "representation"]
-    active_modules = modules or _ALL_MODULES
+    if isinstance(modules, str):
+        modules = [modules]  # a single name, not an iterable of characters (GA-11)
+    unknown_modules = [m for m in (modules or []) if m not in _ALL_MODULES]
+    if unknown_modules:
+        raise ValueError(
+            f"Unknown analysis module(s) {unknown_modules}. Valid modules: {_ALL_MODULES}."
+        )
+    active_modules = list(modules) if modules else _ALL_MODULES
+    if modules and "representation" in modules and embeddings is None:
+        logger.warning("Skipped representation: 'representation' requested without embeddings.")
 
     results: dict[str, Any] = {}
     missing_components: list[str] = []
@@ -134,31 +269,30 @@ def _run_analysis_pipeline(
     if y_prob is None:
         missing_components.append("probabilities")
 
-    # ------------------------------------------------------------------
-    # Progress Tracking
-    # ------------------------------------------------------------------
-    try:
-        from tqdm import tqdm
-
-        pbar = tqdm(active_modules, desc="Analysing Model", unit="module", leave=False)
-    except ImportError:
-        pbar = active_modules
+    def _progress(message: str) -> None:
+        # User-facing progress only when verbose; otherwise a debug log (TL-26).
+        if verbose:
+            print(message)
+        else:
+            logger.debug(message)
 
     # ------------------------------------------------------------------
     # 2. Calibration module
     # ------------------------------------------------------------------
+    if y_prob is not None:
+        top_label = _argmax_labels(y_prob, class_labels)
+        _warn_if_pred_differs_from_argmax(y_pred, top_label)
+
     if "calibration" in active_modules:
         if y_prob is not None:
-            print("Running calibration analysis...")
-            if hasattr(pbar, "set_postfix"):
-                pbar.set_postfix(module="calibration")
+            _progress("Running calibration analysis...")
 
             # Calibration logic based on task type
             if y_prob.ndim == 2 and y_prob.shape[1] > 2:
                 # MULTICLASS: Top-label calibration (ECE) and Multiclass Brier Score
                 n_classes = y_prob.shape[1]
                 confidences = np.max(y_prob, axis=1)
-                correct_mask = (y_true == y_pred).astype(float)
+                correct_mask = (y_true == top_label).astype(float)
 
                 # Multiclass Brier Score: 1/N * sum(sum((p_ic - o_ic)^2))
                 # We can compute this efficiently
@@ -172,6 +306,8 @@ def _run_analysis_pipeline(
                     "brier_score": float(mbrier),
                     "ece": expected_calibration_error(correct_mask, confidences),
                     "mce": maximum_calibration_error(correct_mask, confidences),
+                    "overconfidence_error": _top_label_overconfidence(y_true, top_label, y_prob),
+                    "n_samples": int(len(y_true)),
                     "reliability_curve": reliability_curve(correct_mask, confidences),
                 }
             else:
@@ -187,6 +323,8 @@ def _run_analysis_pipeline(
                     "brier_score": brier_score(y_true_encoded, y_prob_pos),
                     "ece": expected_calibration_error(y_true_encoded, y_prob_pos),
                     "mce": maximum_calibration_error(y_true_encoded, y_prob_pos),
+                    "overconfidence_error": _top_label_overconfidence(y_true, top_label, y_prob),
+                    "n_samples": int(len(y_true)),
                     "reliability_curve": reliability_curve(y_true_encoded, y_prob_pos),
                 }
         else:
@@ -204,13 +342,27 @@ def _run_analysis_pipeline(
         # coverage/informativeness from sets). Emitted iff y_pred_sets is
         # supplied; strictly diagnostic-only — never wired into the Trust Score.
         if y_pred_sets is not None:
-            print("Running conformal diagnostics...")
-            if hasattr(pbar, "set_postfix"):
-                pbar.set_postfix(module="conformal")
+            _progress("Running conformal diagnostics...")
             calibration_block = results.setdefault("calibration", {})
             try:
+                # Prediction sets index the probability columns, so encode the
+                # labels the same way (TL-13): labels 1..K or strings otherwise
+                # count against the wrong column.
+                n_set_classes = (
+                    int(y_prob.shape[1])
+                    if y_prob is not None and y_prob.ndim == 2
+                    else (len(class_labels) if class_labels is not None else None)
+                )
+                conformal_y = (
+                    _encode_labels_for_probability_columns(y_true, n_set_classes, class_labels)
+                    if n_set_classes is not None
+                    else y_true
+                )
                 calibration_block["conformal"] = conformal_diagnostics(
-                    y_true, y_pred_sets, nominal_coverage=nominal_coverage
+                    conformal_y,
+                    _encode_prediction_sets(y_pred_sets, class_labels),
+                    nominal_coverage=nominal_coverage,
+                    n_classes=n_set_classes,
                 )
             except (ValueError, TypeError) as e:
                 # Malformed sets (length mismatch, all-empty, ambiguous 0/1 list,
@@ -231,12 +383,13 @@ def _run_analysis_pipeline(
     # ------------------------------------------------------------------
     if "failure" in active_modules:
         if y_prob is not None:
-            print("Running failure analysis...")
-            if hasattr(pbar, "set_postfix"):
-                pbar.set_postfix(module="failure")
+            _progress("Running failure analysis...")
             results["failure"] = {
                 "misclassification_summary": misclassification_summary(y_true, y_pred, y_prob),
                 "confidence_gap": confidence_gap(y_true, y_pred, y_prob),
+                "confidence_auroc": error_detection_auroc(y_true, top_label, y_prob),
+                "n_classes": int(y_prob.shape[1]) if y_prob.ndim == 2 else 2,
+                **_accuracy_and_baseline(y_true, y_pred),
             }
         else:
             logger.warning(
@@ -253,7 +406,8 @@ def _run_analysis_pipeline(
                         "overall_error_rate": round(float(incorrect_mask.mean()), 4),
                     }
                 },
-                "confidence_gap": {"gap": 0.0, "status": "skipped"},
+                "confidence_gap": {"gap": None, "status": "skipped"},
+                **_accuracy_and_baseline(y_true, y_pred),
             }
             missing_components.append("failure_confidence_metrics")
 
@@ -261,26 +415,30 @@ def _run_analysis_pipeline(
     # 4. Bias detection module
     # ------------------------------------------------------------------
     if "bias" in active_modules:
-        print("Running bias analysis...")
-        if hasattr(pbar, "set_postfix"):
-            pbar.set_postfix(module="bias")
+        _progress("Running bias analysis...")
         results["bias"] = {
             "class_imbalance": class_imbalance_report(y_true),
         }
         if sensitive_features:
             results["bias"]["subgroup_performance"] = subgroup_performance(
-                y_true, y_pred, sensitive_features
+                y_true, y_pred, sensitive_features, min_group_size=_MIN_FAIRNESS_GROUP_SIZE
             )
-            # Equalized odds requires a binary target (0, 1) and features with >1 subgroup
-            is_binary = set(np.unique(y_true)).issubset({0, 1})
+            _warn_on_low_support(results["bias"]["subgroup_performance"])
+            # Equalized odds needs a binary target and features with >1 subgroup.
+            # Any two labels qualify: the positive class is class_labels[1] (the
+            # probability column order) or else the larger label (GA-05).
+            binary_codes = _binary_codes(y_true, y_pred, class_labels)
             meaningful_features = {
                 k: v for k, v in sensitive_features.items() if len(np.unique(v)) > 1
             }
 
-            if is_binary and meaningful_features:
+            if binary_codes is not None and meaningful_features:
                 try:
                     results["bias"]["equalized_odds"] = equalized_odds(
-                        y_true, y_pred, meaningful_features
+                        binary_codes[0],
+                        binary_codes[1],
+                        meaningful_features,
+                        min_group_size=_MIN_FAIRNESS_GROUP_SIZE,
                     )
                 except Exception as e:
                     logger.warning("Skipped equalized_odds computation: %s", e)
@@ -300,9 +458,7 @@ def _run_analysis_pipeline(
     # 5. Representation analysis module
     # ------------------------------------------------------------------
     if "representation" in active_modules and embeddings is not None:
-        print("Running representation analysis...")
-        if hasattr(pbar, "set_postfix"):
-            pbar.set_postfix(module="representation")
+        _progress("Running representation analysis...")
         results["representation"] = {
             "separability": embedding_separability(embeddings, y_true),
         }

@@ -84,23 +84,33 @@ full = [
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
-    "ruff>=0.4",
+    "ruff==0.15.10",  # keep in sync with .pre-commit-config.yaml and ci.yml
     "mypy>=1.0",
     "pre-commit>=3.0",
     "build>=1.0",
     "twine>=5.0",
     "pip-audit>=2.7",
     "pytest-xdist>=3.0",
+    "pandas>=1.5",
+]
+notebooks = [
+    "seaborn>=0.12",
+    "ipykernel>=6.0",
+    "nbclient>=0.9",
+    "nbformat>=5.9",
 ]
 docs = [
     "sphinx>=6.0",
     "furo>=2024.1.1",
     "myst-parser>=2.0",
     "nbsphinx>=0.9",
+    "sphinxcontrib-mermaid>=0.9",
 ]
 
 [tool.setuptools.packages.find]
-exclude = ["tests*","scratch*", "docs*", "examples*"]
+# Ship only the library; audit/ and scripts/ must not become top-level
+# packages in site-packages (GB-03).
+include = ["trustlens*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "trustlens._version.__version__" }
@@ -143,6 +153,7 @@ exclude = [
     "build",
     "dist",
     "*.ipynb",
+    "audit",  # frozen audit evidence scripts (audit/2026-09/repro); not package code
 ]
 
 [tool.ruff.lint]
@@ -178,3 +189,24 @@ warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
 follow_imports = "silent"
+
+# Strictness ratchet (audit phase 3): modules listed here must pass
+# `mypy --strict`. Add modules as they are cleaned up; never remove one.
+[[tool.mypy.overrides]]
+module = [
+    "trustlens._palette",
+    "trustlens._report.*",
+    "trustlens.core.inputs",
+    "trustlens.report",
+    "trustlens.results_schema",
+]
+# `strict` is global-only in mypy, so the per-module equivalents are listed.
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+disallow_any_generics = true
+disallow_untyped_decorators = true
+check_untyped_defs = true
+warn_return_any = true
+no_implicit_reexport = true
+strict_equality = true

@@ -62,3 +62,41 @@ def test_get_resolver_success():
 def test_get_resolver_unsupported():
     with pytest.raises(UnsupportedModelError):
         get_resolver(MockModel())
+
+
+def test_module_prefix_does_not_match_other_packages():
+    """ARCH-05: 'sklearn_extra' is not sklearn; it falls back to the capability check."""
+    from trustlens.backends.registry import detect_framework
+
+    Fake = type("Model", (), {"predict": lambda self, X: X, "__module__": "sklearn_extra.cluster"})
+    NoPredict = type("Thing", (), {"__module__": "torchvision.models"})
+    assert detect_framework(Fake()) == "sklearn"  # via capability, not via name
+    import pytest as _pytest
+
+    from trustlens.backends.types import UnsupportedModelError
+
+    with _pytest.raises(UnsupportedModelError):
+        detect_framework(NoPredict())
+
+
+def test_importing_trustlens_does_not_load_matplotlib():
+    """TL-30: scoring code must not pull in the plotting stack."""
+    import subprocess
+    import sys
+
+    code = "import sys, trustlens; print('matplotlib' in sys.modules)"
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "False"
+
+
+def test_trust_score_html_does_not_load_matplotlib():
+    """GB-13: rendering a TrustScoreResult is plain HTML, no plotting stack."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys; from trustlens import compute_trust_score; "
+        "compute_trust_score({})._repr_html_(); print('matplotlib' in sys.modules)"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "False"

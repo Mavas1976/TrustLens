@@ -1,0 +1,12 @@
+sd  acc    ECE    gap    fail_sub  score grade blocked
+1   0.6796 0.0104 0.0604   18.4     50  D     True  Low Trust - Blocked by high diagnostic risk (
+2   0.7748 0.0064 0.1206   25.1     57  D     True  Low Trust - Blocked by high diagnostic risk (
+4   0.8717 0.0044 0.1865   32.4     64  D     True  Low Trust - Blocked by high diagnostic risk (
+8   0.9305 0.0051 0.2278   36.8     69  D     True  Low Trust - Blocked by high diagnostic risk (
+16  0.9629 0.0038 0.2608   40.1     72  B     False  Good Trust - minor issues to address
+32  0.9839 0.0014 0.2659   41.0     73  B     False  Good Trust - minor issues to address
+64  0.9908 0.0011 0.2561   40.3     73  B     False  Good Trust - minor issues to address
+
+breast_cancer LogisticRegression: acc=0.959 ECE=0.044 gap=0.2292 sub={'calibration': 90.4, 'failure': 37.5, 'bias': 98.1} score=67 grade=D blocked=True | Low Trust - Blocked by high diagnostic risk (misaligned conf
+breast_cancer RandomForestClassifier: acc=0.959 ECE=0.043 gap=0.3403 sub={'calibration': 90.6, 'failure': 46.4, 'bias': 98.1} score=73 grade=B blocked=False | Good Trust - minor issues to address
+make_classification LR: acc=0.773 ECE=0.034 gap=0.1106 sub={'calibration': 79.3, 'failure': 24.3, 'bias': 100.0} score=55 grade=D blocked=True | Low Trust - Blocked by high diagnostic risk (misaligned conf

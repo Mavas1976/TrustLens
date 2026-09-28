@@ -1,0 +1,3 @@
+C1 conformal_diagnostics vs manual (marginal, class-cond, SSC, size, efficiency) max|diff|: 0
+C2 labels {1,2,3} + class_labels, matrix sets: pipeline marginal 0.3566666666666667  true (column-index) coverage 0.9  n_classes 3 None None
+C3 string labels + class_labels: {'status': 'skipped', 'reason': 'invalid_prediction_sets', 'details': 'y_true must contain integer class labels.'}

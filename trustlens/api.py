@@ -11,9 +11,9 @@ Responsibilities
 
 Usage
 -----
->>> from trustlens import analyze
->>> report = analyze(model, X_val, y_val, y_prob)
->>> report.show()
+>>> from trustlens import analyze  # doctest: +SKIP
+>>> report = analyze(model, X_val, y_val, y_prob)  # doctest: +SKIP
+>>> report.show()  # doctest: +SKIP
 """
 
 from __future__ import annotations
@@ -24,39 +24,118 @@ from typing import Any, Optional
 import numpy as np
 
 from trustlens.backends.registry import get_resolver
+from trustlens.core.inputs import check_lengths, prepare_inputs
 from trustlens.core.pipeline import _run_analysis_pipeline, _run_regression_pipeline
 from trustlens.report import TrustReport
 
 logger = logging.getLogger(__name__)
 
 
-def _detect_task(y_true: np.ndarray, task: str) -> str:
+def _infer_class_labels(
+    model: Any, y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray
+) -> Optional[np.ndarray]:
+    """Recover the probability-column labels when the user supplied y_pred and y_prob.
+
+    Uses ``model.classes_`` when available. Otherwise, when the labels are not
+    already the column indices 0..K-1, the sorted distinct labels of y_true and
+    y_pred are used if their count matches the number of columns (the sklearn
+    convention); a clear error is raised later if that is not possible (TL-13).
+    """
+    classes = getattr(model, "classes_", None)
+    if classes is not None and len(classes) == y_prob.shape[1]:
+        return np.asarray(classes)
+    labels = np.unique(np.concatenate([np.asarray(y_true), np.asarray(y_pred)]))
+    if labels.dtype.kind in "iu" and labels.min() >= 0 and labels.max() < y_prob.shape[1]:
+        return None  # already column indices
+    if len(labels) == y_prob.shape[1]:
+        logger.info("Inferred class_labels %s from the sorted distinct labels.", labels.tolist())
+        return labels
+    return None
+
+
+def _estimator_type(model: Any) -> Optional[str]:
+    """Return ``"regressor"`` / ``"classifier"`` for scikit-learn-style models, else None."""
+    if model is None:
+        return None
+    declared = getattr(model, "_estimator_type", None)
+    if declared in ("regressor", "classifier"):
+        return str(declared)
+    try:
+        from sklearn.base import is_classifier, is_regressor
+
+        if is_regressor(model):
+            return "regressor"
+        if is_classifier(model):
+            return "classifier"
+    except Exception:  # noqa: BLE001 - non-sklearn objects may not support tag lookup
+        logger.debug("Could not read estimator tags from %s", type(model).__name__)
+    return None
+
+
+def _detect_task(
+    y_true: np.ndarray,
+    task: str,
+    model: Any = None,
+    y_prob: Optional[np.ndarray] = None,
+) -> str:
     """Resolve the analysis task type.
 
     ``task`` may be ``"classification"`` / ``"regression"`` (explicit, honored
-    as-is) or ``"auto"``. Auto-detection errs toward ``"classification"`` and
-    only returns ``"regression"`` when the target is clearly continuous — a
-    float array that is not integer-valued, or has many distinct values — so a
-    discrete label set is never mis-routed.
+    as-is) or ``"auto"``. Auto-detection uses, in order:
+
+    1. the model: a fitted scikit-learn-style regressor or classifier
+       (``_estimator_type``) decides;
+    2. probabilities: ``y_prob`` implies classification;
+    3. the target: fractional floats are regression; integer-valued targets
+       with at most 20 distinct values are class labels; integer targets whose
+       distinct values are spread out (not a contiguous 0..K / 1..K range) and
+       make up at least 5% of the samples are regression, with a warning.
+       Anything else is ambiguous and raises ``ValueError`` asking for an
+       explicit ``task`` (TL-07, GA-06).
     """
     if task in ("classification", "regression"):
         return task
     if task != "auto":
         raise ValueError(f"Invalid task {task!r}. Use 'auto', 'classification', or 'regression'.")
 
-    y = np.asarray(y_true)
-    if y.dtype.kind == "f":
-        n_unique = len(np.unique(y))
-        is_integer_valued = bool(np.all(np.isfinite(y))) and bool(np.allclose(y, np.round(y)))
-        # Integer-valued floats are class labels at ANY cardinality (a 25-class
-        # target encoded as float must not be mistaken for regression), and a
-        # small distinct-value set is also label-like. Only clearly-continuous
-        # floats route to regression.
-        if is_integer_valued or n_unique <= 20:
-            return "classification"
+    estimator_type = _estimator_type(model)
+    if estimator_type == "regressor":
         return "regression"
-    # Non-float dtypes (ints, strings, bools) default to classification.
-    return "classification"
+    if estimator_type == "classifier" or y_prob is not None:
+        return "classification"
+
+    y = np.asarray(y_true)
+    if y.dtype.kind not in "fiu":
+        # Strings, bools and objects are labels.
+        return "classification"
+
+    values = np.unique(y)
+    n_unique = len(values)
+    is_integer_valued = y.dtype.kind in "iu" or (
+        bool(np.all(np.isfinite(y))) and bool(np.allclose(y, np.round(y)))
+    )
+    if not is_integer_valued:
+        # Fractional values (e.g. half-step ratings) are never class indices (GA-06).
+        return "regression"
+
+    if n_unique <= 20:
+        return "classification"
+    first = float(values[0])
+    contiguous = first in (0.0, 1.0) and float(values[-1]) - first == n_unique - 1
+    if not contiguous and n_unique / max(len(y), 1) >= 0.05:
+        logger.warning(
+            "task='auto' routed an integer-valued target with %d distinct values to "
+            "regression. Pass task='classification' if these are class labels.",
+            n_unique,
+        )
+        return "regression"
+    # Many contiguous integers (0..K or 1..K) or few distinct values per sample:
+    # class labels and counts look the same, so ask instead of guessing (GA-06).
+    raise ValueError(
+        f"Cannot tell whether an integer target with {n_unique} distinct values is class "
+        "labels or a count. Pass task='classification' or task='regression', or supply "
+        "y_prob or a fitted model."
+    )
 
 
 def quick_analyze(
@@ -84,8 +163,12 @@ def quick_analyze(
     TrustReport
         Populated report object with metrics, plots, and narrative summaries.
     """
-    if model is None or X is None or y is None:
-        logger.info(f"No model/data provided. Auto-loading {dataset} dataset for demo...")
+    if model is not None and (X is None or y is None):
+        # Never silently swap the caller's model for a demo model (GB-17).
+        raise ValueError("quick_analyze(model, X, y): pass X and y together with the model.")
+    using_demo = model is None or X is None or y is None
+    if using_demo:
+        logger.info("No model/data provided. Auto-loading %s dataset for demo...", dataset)
         if dataset == "iris":
             from sklearn.datasets import load_iris
             from sklearn.ensemble import RandomForestClassifier
@@ -113,8 +196,9 @@ def quick_analyze(
         else:
             raise ValueError("Supported demo datasets: 'iris', 'breast_cancer'")
 
-    print(f"\nTrustLens Analysis: {dataset}")
-    print(f"Status: Loading demo model and {dataset} validation data...")
+    if using_demo:
+        print(f"\nTrustLens Analysis: {dataset} (demo)")
+        print(f"Status: Loaded demo model and {dataset} validation data.")
 
     report = analyze(model=model, X=X, y_true=y, framework=framework, verbose=False)
 
@@ -125,7 +209,7 @@ def quick_analyze(
 
 def analyze(
     model: Any,
-    X: np.ndarray,
+    X: Any,
     y_true: np.ndarray,
     y_pred: Optional[np.ndarray] = None,
     y_prob: Optional[np.ndarray] = None,
@@ -152,8 +236,10 @@ def analyze(
     ----------
     model : Any, optional
       Trained machine learning model. Can be None if ``y_pred`` or ``y_prob`` are provided manually.
-    X : np.ndarray
-      Validation feature matrix, shape (n_samples, n_features).
+    X : array-like or None
+      Validation feature matrix, shape (n_samples, n_features); passed to the
+      model unchanged (a DataFrame keeps its column names). May be None when
+      ``y_pred``/``y_prob`` are supplied.
     y_true : np.ndarray
       Ground-truth labels, shape (n_samples,).
     y_pred : np.ndarray, optional
@@ -225,38 +311,34 @@ def analyze(
     >>> from sklearn.ensemble import RandomForestClassifier
     >>> from sklearn.model_selection import train_test_split
     >>> from trustlens import analyze
-    >>>
-    >>> # Create a synthetic dataset
-    >>> X, y = make_classification(
-    ...     n_samples=500, n_features=10, random_state=42
-    ... )
-    >>>
-    >>> # Train / test split
+    >>> X, y = make_classification(n_samples=500, n_features=10, random_state=42)
     >>> X_train, X_test, y_train, y_test = train_test_split(
     ...     X, y, test_size=0.3, random_state=42
     ... )
-    >>>
-    >>> # Train a classifier
-    >>> model = RandomForestClassifier(random_state=42)
-    >>> model.fit(X_train, y_train)
-    >>>
-    >>> # Predict probabilities
-    >>> y_prob = model.predict_proba(X_test)
-    >>>
-    >>> # Run TrustLens analysis
-    >>> report = analyze(model, X_test, y_test, y_prob=y_prob)
-    >>>
-    >>> # Display results
-    >>> report.show()
+    >>> model = RandomForestClassifier(random_state=42).fit(X_train, y_train)
+    >>> report = analyze(model, X_test, y_test, verbose=False)
+    >>> report.trust_score.grade in {"A", "B", "C", "D"}
+    True
+    >>> report.show()  # doctest: +SKIP
     """
+    # ------------------------------------------------------------------
+    # 0. Route by task, then validate every input once (TL-12). Regression
+    #    skips the classification backend and the classification modules.
+    # ------------------------------------------------------------------
+    task_type = _detect_task(y_true, task, model=model, y_prob=y_prob)
+    inputs = prepare_inputs(
+        y_true,
+        X=X,
+        y_pred=y_pred,
+        y_prob=y_prob,
+        sensitive_features=sensitive_features,
+        embeddings=embeddings,
+        task=task_type,
+    )
+    y_true, y_pred, y_prob = inputs.y_true, inputs.y_pred, inputs.y_prob
     if len(y_true) < 30:
         logger.warning("Small dataset (n < 30) detected. Metrics may be unreliable.")
 
-    # ------------------------------------------------------------------
-    # 0. Route by task. Regression skips the classification backend (which
-    #    resolves class probabilities) and the classification modules.
-    # ------------------------------------------------------------------
-    task_type = _detect_task(y_true, task)
     if task_type == "regression":
         if y_pred is None:
             if model is None or not hasattr(model, "predict"):
@@ -265,12 +347,13 @@ def analyze(
                     "or a model that exposes .predict(X)."
                 )
             y_pred_resolved = np.asarray(model.predict(X))
+            check_lengths(len(y_true), **{"model.predict(X)": y_pred_resolved})
         else:
-            y_pred_resolved = np.asarray(y_pred)
+            y_pred_resolved = y_pred
         return _run_regression_pipeline(
             model=model,
             X=X,
-            y_true=np.asarray(y_true),
+            y_true=y_true,
             y_pred=y_pred_resolved,
             prediction_intervals=prediction_intervals,
             predicted_variance=predicted_variance,
@@ -285,6 +368,8 @@ def analyze(
     # Short-circuit if both overrides are provided
     if y_pred is not None and y_prob is not None:
         framework = "manual"
+        if class_labels is None:
+            class_labels = _infer_class_labels(model, y_true, y_pred, y_prob)
 
     resolver = get_resolver(model, framework=framework)
     resolved_class_labels = np.asarray(class_labels) if class_labels is not None else None
@@ -295,6 +380,8 @@ def analyze(
         y_prob=y_prob,
         class_labels=resolved_class_labels,
     )
+
+    check_lengths(len(y_true), resolved_y_pred=bundle.y_pred, resolved_y_prob=bundle.y_prob)
 
     # ------------------------------------------------------------------
     # 2. Delegate to Core Pipeline
@@ -308,8 +395,8 @@ def analyze(
         framework=bundle.framework,
         backend_metadata=bundle.metadata,
         class_labels=bundle.class_labels,
-        embeddings=embeddings,
-        sensitive_features=sensitive_features,
+        embeddings=inputs.embeddings,
+        sensitive_features=inputs.sensitive_features,
         modules=modules,
         plugins=plugins,
         y_pred_sets=y_pred_sets,
