@@ -79,7 +79,7 @@ class PlotMixin(ReportBase):
         self,
         save_path: str | None = None,
         show: bool = True,
-    ):
+    ) -> Any:
         """
         Render the TrustLens Summary Dashboard — a single-figure overview
         of the model's trustworthiness.
@@ -137,7 +137,7 @@ class PlotMixin(ReportBase):
         self,
         top_k: int = 10,
         images: np.ndarray | None = None,
-        feature_names: list | None = None,
+        feature_names: list[str] | None = None,
         save_path: str | None = None,
     ) -> None:
         """
@@ -272,7 +272,7 @@ class PlotMixin(ReportBase):
         n_max: int = 5000,
         save_path: str | None = None,
         show: bool = True,
-    ):
+    ) -> Any:
         """
         Project stored embeddings to 2D and render a class-colored scatter plot.
 
@@ -347,7 +347,7 @@ def _plot_failure_grid(
     y_pred: np.ndarray,
     confidences: np.ndarray,
     save_path: str | None = None,
-):
+) -> Any:
     """Render a grid of failure images with prediction annotations."""
     import matplotlib.pyplot as plt
 

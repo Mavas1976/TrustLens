@@ -72,7 +72,7 @@ class NarrativeMixin(ReportBase):
         """Generate plain-text insights based on results."""
         insight_list = []
 
-        def add_insight(msg: str, priority: int):
+        def add_insight(msg: str, priority: int) -> None:
             insight_list.append((priority, msg))
 
         # Surfaced Patterns

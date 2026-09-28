@@ -189,8 +189,9 @@ follow_imports = "silent"
 [[tool.mypy.overrides]]
 module = [
     "trustlens._palette",
-    "trustlens._report.base",
+    "trustlens._report.*",
     "trustlens.core.inputs",
+    "trustlens.report",
     "trustlens.results_schema",
 ]
 # `strict` is global-only in mypy, so the per-module equivalents are listed.

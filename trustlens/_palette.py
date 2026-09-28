@@ -28,3 +28,26 @@ BRAND_COLORS: dict[str, str] = {
     "white": "#FFFFFF",
     "dark": "#1C1C1E",
 }
+
+GRADE_COLORS: dict[str, str] = {
+    "A": BRAND_COLORS["green"],
+    "B": BRAND_COLORS["blue"],
+    "C": BRAND_COLORS["amber"],
+    "D": BRAND_COLORS["red"],
+}
+
+
+def color_for_grade(grade: str) -> str:
+    """Colour of a letter grade; grey for N/A or unknown grades."""
+    return GRADE_COLORS.get(grade, BRAND_COLORS["gray"])
+
+
+def color_for_score(score: float) -> str:
+    """Colour of a 0–100 score, using the grade bands."""
+    if score >= 80:
+        return BRAND_COLORS["green"]
+    if score >= 60:
+        return BRAND_COLORS["blue"]
+    if score >= 40:
+        return BRAND_COLORS["amber"]
+    return BRAND_COLORS["red"]

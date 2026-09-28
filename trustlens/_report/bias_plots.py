@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Any
 
 from trustlens._report.base import ReportBase
 
@@ -22,7 +23,7 @@ class BiasPlotMixin(ReportBase):
         show: bool = True,
         save_path: str | None = None,
         multi_feature: bool = False,
-    ):
+    ) -> Any:
         """
         Generate fairness/bias visualizations from report results.
 
@@ -161,14 +162,14 @@ class BiasPlotMixin(ReportBase):
         # Reserved meta keys that should never be treated as feature names.
         _META_KEYS = ("status", "reason", "details")
 
-        def _get_first(key):
+        def _get_first(key: str) -> tuple[Any, Any]:
             d = bias_data.get(key, {})
             for k, v in d.items():
                 if k not in _META_KEYS:
                     return k, v
             return None, None
 
-        def _sorted_feature_dict(key):
+        def _sorted_feature_dict(key: str) -> dict[str, Any]:
             """Return ``{feature: data}`` ordered by ``sorted(feature_names)``.
 
             Drops reserved meta keys so wrapper functions iterate only over
@@ -177,7 +178,7 @@ class BiasPlotMixin(ReportBase):
             d = bias_data.get(key, {})
             return {fname: d[fname] for fname in sorted(k for k in d if k not in _META_KEYS)}
 
-        def _get_save_path(base_path, suffix=None):
+        def _get_save_path(base_path: Any, suffix: str | None = None) -> str | None:
             if base_path is None:
                 return None
 

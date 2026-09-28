@@ -29,10 +29,10 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 
+from trustlens._palette import color_for_grade, color_for_score
 from trustlens.visualization.style import (
     BRAND_COLORS,
     FIG_DEFAULTS,
-    SEMANTIC_COLORS,
     apply_style,
     save_figure,
 )
@@ -615,14 +615,8 @@ def _draw_subscores(ax: plt.Axes, ts) -> None:
 
 
 def _color_for_grade(grade: str) -> str:
-    return SEMANTIC_COLORS["grade"].get(grade, BRAND_COLORS["gray"])
+    return color_for_grade(grade)
 
 
 def _color_for_score(score: float) -> str:
-    if score >= 80:
-        return BRAND_COLORS["green"]
-    if score >= 60:
-        return BRAND_COLORS["blue"]
-    if score >= 40:
-        return BRAND_COLORS["amber"]
-    return BRAND_COLORS["red"]
+    return color_for_score(score)

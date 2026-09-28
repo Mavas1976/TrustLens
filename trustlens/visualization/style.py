@@ -49,7 +49,7 @@ from typing import Any
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
-from trustlens._palette import BRAND_COLORS
+from trustlens._palette import BRAND_COLORS, GRADE_COLORS
 
 # ---------------------------------------------------------------------------
 # Brand colors — name lookup for non-categorical use (titles, fills, etc.)
@@ -90,12 +90,7 @@ SEMANTIC_COLORS: dict[str, dict[str, str]] = {
         "caution": BRAND_COLORS["amber"],
         "do_not_deploy": BRAND_COLORS["red"],
     },
-    "grade": {
-        "A": BRAND_COLORS["green"],
-        "B": BRAND_COLORS["blue"],
-        "C": BRAND_COLORS["amber"],
-        "D": BRAND_COLORS["red"],
-    },
+    "grade": dict(GRADE_COLORS),
     "direction": {
         "positive": BRAND_COLORS["blue"],
         "negative": BRAND_COLORS["orange"],

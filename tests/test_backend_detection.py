@@ -87,3 +87,16 @@ def test_importing_trustlens_does_not_load_matplotlib():
     code = "import sys, trustlens; print('matplotlib' in sys.modules)"
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
     assert out.stdout.strip() == "False"
+
+
+def test_trust_score_html_does_not_load_matplotlib():
+    """GB-13: rendering a TrustScoreResult is plain HTML, no plotting stack."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys; from trustlens import compute_trust_score; "
+        "compute_trust_score({})._repr_html_(); print('matplotlib' in sys.modules)"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "False"

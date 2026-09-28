@@ -5,15 +5,21 @@ Part of the TrustReport split (TL-18); behaviour is unchanged.
 
 from __future__ import annotations
 
+import html
 import io
 import logging
 from typing import Any
 
-from trustlens._palette import BRAND_COLORS
+from trustlens._palette import BRAND_COLORS, color_for_grade, color_for_score
 from trustlens._report.base import ReportBase
 from trustlens._version import __version__
 
 logger = logging.getLogger("trustlens.report")
+
+
+def escape_text(value: Any) -> str:
+    """The single HTML-escaping point for every TrustLens HTML output (R-018)."""
+    return html.escape(str(value))
 
 
 class HtmlMixin(ReportBase):
@@ -21,9 +27,8 @@ class HtmlMixin(ReportBase):
 
     def _repr_html_regression(self) -> str:
         """Simple text-based HTML for regression reports (no Phase-2 plots yet)."""
-        import html as _html
 
-        body = _html.escape(self._generate_regression_text())
+        body = escape_text(self._generate_regression_text())
         return (
             '<div style="font-family: monospace; max-width: 760px; padding: 18px; '
             'border: 1px solid #e0e0e0; border-radius: 12px; background:#fff;">'
@@ -40,10 +45,7 @@ class HtmlMixin(ReportBase):
         """
         if self.task_type == "regression":
             return self._repr_html_regression()
-        from html import escape
-
-        def _esc(value: Any) -> str:
-            return escape(str(value))
+        _esc = escape_text
 
         import base64
 
@@ -154,3 +156,58 @@ class HtmlMixin(ReportBase):
         </div>
         """
         return html
+
+
+def render_trust_score_html(ts: Any) -> str:
+    """HTML card for a TrustScoreResult; all text goes through :func:`escape_text`."""
+    gc = color_for_grade(ts.grade)
+
+    html = f"""
+    <div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                max-width: 450px; padding: 20px; border-radius: 12px;
+                border: 1px solid {gc}40; background-color: #ffffff;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin: 10px 0;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+            <div style="font-size: 14px; font-weight: 600; color: {BRAND_COLORS["gray"]}; text-transform: uppercase; letter-spacing: 0.5px;">
+                Trust Analysis Result
+            </div>
+            <div style="padding: 4px 12px; border-radius: 20px; background-color: {gc}; color: white;
+                        font-size: 13px; font-weight: 700;">
+                GRADE {escape_text(ts.grade)}
+            </div>
+        </div>
+
+        <div style="display: flex; align-items: baseline; margin-bottom: 8px;">
+            <span style="font-size: 48px; font-weight: 800; color: {gc}; line-height: 1;">{ts.score}</span>
+            <span style="font-size: 20px; font-weight: 600; color: {BRAND_COLORS["gray"]}; margin-left: 4px;">/100</span>
+        </div>
+
+        <div style="font-size: 16px; font-weight: 600; color: {BRAND_COLORS["dark"]}; margin-bottom: 20px;">
+            {escape_text(ts.verdict)}
+        </div>
+
+        <div style="border-top: 1px solid #f0f0f0; pt: 15px;">
+            <div style="font-size: 12px; font-weight: 700; color: {BRAND_COLORS["gray"]}; margin: 12px 0 8px 0; text-transform: uppercase;">
+                Dimension Breakdown
+            </div>
+    """
+
+    for dim, score in ts.sub_scores.items():
+        sc = color_for_score(score)
+        html += f"""
+            <div style="margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px;">
+                    <span style="color: {BRAND_COLORS["dark"]}; font-weight: 500;">{escape_text(dim.capitalize())}</span>
+                    <span style="color: {sc}; font-weight: 700;">{score:.1f}</span>
+                </div>
+                <div style="width: 100%; height: 6px; background-color: #f0f0f0; border-radius: 3px; overflow: hidden;">
+                    <div style="width: {score}%; height: 100%; background-color: {sc}; border-radius: 3px;"></div>
+                </div>
+            </div>
+        """
+
+    html += """
+        </div>
+    </div>
+    """
+    return html

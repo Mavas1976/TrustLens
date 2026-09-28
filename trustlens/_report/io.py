@@ -22,7 +22,10 @@ class PersistenceMixin(ReportBase):
     """Saving and serialising a TrustReport."""
 
     def save(
-        self, path: str | os.PathLike[str] = "trust_report", overwrite: bool = True, **kwargs
+        self,
+        path: str | os.PathLike[str] = "trust_report",
+        overwrite: bool = True,
+        **kwargs: Any,
     ) -> Path:
         """
         Save the analysis report.
