@@ -43,9 +43,16 @@ methodology version must satisfy:
 - Rescaling a regression target and its predictions together does not change the score.
 - Fairness gaps are computed only from defined rates (TPR needs positives, FPR
   needs negatives) and from groups with enough support.
-- Worse calibration with the same predictions never raises the score. For
-  regression intervals this holds for widening a level or shifting it away
-  from nominal coverage; narrowing a level trades sharpness against
+- Worse calibration with the same predictions never raises the score, on
+  each side of nominal: more overconfidence never helps, more
+  underconfidence never helps. Across the two sides the rule is deliberately
+  asymmetric: overconfidence (under-covering intervals, confidence above
+  accuracy) can block, underconfidence (over-covering intervals, confidence
+  below accuracy) only lowers its sub-scores (TL-09). An interval that misses
+  nominal coverage by 0.109 from below therefore scores lower (39/D) than one
+  that misses by 0.104 from above (57/C). For regression intervals the rule
+  holds for widening an over-covering level or shifting a level away from
+  nominal coverage; narrowing a level trades sharpness against
   calibration (the resolution/reliability trade-off). Since methodology 2.3
   the calibration weight has no free zone, so the gain from narrowing into
   over-confidence is small and peaks near the tolerance (§4d).

@@ -204,3 +204,50 @@ def test_narrowing_into_over_confidence_gains_at_most_rounding():
     assert errors[-1] < -0.05 < errors[0]
     assert max(scores) <= scores[0] + 1, scores
     assert scores[-1] < scores[0], scores
+
+
+def test_calibration_asymmetry_is_deliberate():
+    """Under-coverage (over-confident) is penalised harder than equal over-coverage
+    (conservative), and the score is monotone on each side of nominal coverage."""
+    from scipy.stats import norm
+
+    rng = np.random.default_rng(0)
+    f = rng.normal(size=4000)
+    y = f + rng.normal(size=4000)
+
+    def run(scale, levels=(0.5, 0.8, 0.9)):
+        intervals = {
+            lvl: (
+                f - norm.ppf(0.5 + lvl / 2) * (scale if lvl == 0.8 else 1.0),
+                f + norm.ppf(0.5 + lvl / 2) * (scale if lvl == 0.8 else 1.0),
+            )
+            for lvl in levels
+        }
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            report = analyze(
+                None,
+                None,
+                y,
+                y_pred=f,
+                task="regression",
+                prediction_intervals=intervals,
+                verbose=False,
+            )
+        cov = report.results["regression"]["interval_coverage"]
+        err = next(p["calibration_error"] for p in cov["per_level"] if p["level"] == 0.8)
+        return err, report.trust_score
+
+    under = [run(s) for s in (0.8, 0.85, 0.9, 0.95, 1.0)]
+    over = [run(s) for s in (1.0, 1.1, 1.2, 1.3, 1.5)]
+    # Monotone on each side: further from nominal never scores higher.
+    assert [t.score for _, t in under] == sorted(t.score for _, t in under)
+    assert [t.score for _, t in over] == sorted((t.score for _, t in over), reverse=True)
+    # Asymmetric across sides at a similar miss (about 0.10): under-coverage blocks.
+    err_under, ts_under = under[0]
+    err_over, ts_over = next((e, t) for e, t in over if e > 0.09)
+    assert err_under < -0.10 and 0.09 < err_over < abs(err_under)
+    assert ts_under.is_blocked and not ts_over.is_blocked
+    assert ts_under.score < ts_over.score
+    # Over-coverage is not rewarded: grossly wide intervals end low.
+    assert run(2.0, levels=(0.8,))[1].score < under[-1][1].score

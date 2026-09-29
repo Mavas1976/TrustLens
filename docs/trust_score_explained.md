@@ -118,8 +118,13 @@ grows from 0.05 to 0.10. Uncertainty informativeness from interval mappings is
 the best level's calibration weight (1 at nominal coverage, falling linearly
 to 0 at a coverage error of 0.10) times its sharpness against climatology;
 with `predicted_variance` the sub-score is the larger of that and the
-error-variance correlation score. Widening a level or shifting it away from
-nominal coverage never raises the score. Narrowing a level trades sharpness
+error-variance correlation score. Widening a level that already over-covers,
+or shifting a level away from nominal coverage, never raises the score. As for
+classification (where underconfidence does not block), the regression rules
+are asymmetric on purpose: under-coverage is over-confident and can block,
+over-coverage is conservative and only lowers the interval-calibration and
+informativeness sub-scores, so an interval 0.10 too narrow scores lower than
+one 0.10 too wide. Narrowing a level trades sharpness
 against calibration; because every step away from nominal coverage costs
 weight, the gain from narrowing into over-confidence is small (at most +4 in a
 51-configuration grid; up to about +8 in a random search). Compared with 2.2,
