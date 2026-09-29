@@ -47,8 +47,8 @@ methodology version must satisfy:
   regression intervals this holds for widening a level or shifting it away
   from nominal coverage; narrowing a level trades sharpness against
   calibration (the resolution/reliability trade-off). Since methodology 2.3
-  the calibration weight has no free zone, so narrowing into over-confidence
-  gains at most a few points (§4d).
+  the calibration weight has no free zone, so the gain from narrowing into
+  over-confidence is small and peaks near the tolerance (§4d).
   This invariant is about the scoring mechanisms (ceilings, blockers, the
   informativeness rule). The underlying metrics are not monotone in every
   change of input: an extra error can lower ECE for an under-confident model,

@@ -581,3 +581,7 @@ def test_calibration_weight_has_no_free_zone():
     out = multilevel_interval_coverage(y, intervals, tolerance=0.05)
     assert out["n_calibrated_levels"] == 1  # still within the verdict tolerance
     assert out["sharpness_weight"] == pytest.approx(0.7)
+    # Over-coverage loses weight symmetrically (NF8-02).
+    intervals = {0.5: _intervals_with_coverage(y, 0.53, 10.0)}  # error +0.03
+    out = multilevel_interval_coverage(y, intervals, tolerance=0.05)
+    assert out["sharpness_weight"] == pytest.approx(0.7)

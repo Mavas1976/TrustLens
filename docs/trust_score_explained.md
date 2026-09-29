@@ -121,8 +121,11 @@ with `predicted_variance` the sub-score is the larger of that and the
 error-variance correlation score. Widening a level or shifting it away from
 nominal coverage never raises the score. Narrowing a level trades sharpness
 against calibration; because every step away from nominal coverage costs
-weight, narrowing into over-confidence gains at most a few points (at most +4
-in a 51-configuration grid, none beyond a coverage error of 0.05).
+weight, the gain from narrowing into over-confidence is small (at most +4 in a
+51-configuration grid; up to about +8 in a random search). Compared with 2.2,
+methodology 2.3 only ever lowers regression scores: for well-calibrated
+intervals from sampling noise alone by 0.2–1.1 points on average (worst case
+about 6) at n = 500–5000.
 Intervals from a multi-level mapping (including a single level) that are all
 unusable score 0.
 

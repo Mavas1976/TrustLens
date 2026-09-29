@@ -410,8 +410,8 @@ def multilevel_interval_coverage(
 
     ice = float(np.mean(abs_errors))
     sharpness_skill = round(1.0 - float(np.average(ratios, weights=weights)), 4) if ratios else None
-    # Weight of the best-calibrated admitted level: 1 when any level is within
-    # the tolerance, falling to 0 as the last admitted level leaves the band.
+    # Weight of the best-calibrated level: 1 only at exactly nominal coverage,
+    # 0.5 at the tolerance, 0 once every level misses by twice the tolerance.
     sharpness_weight = round(max(weights), 4) if weights else 0.0
     # Scoring evidence (NF6-01): the best level's weighted sharpness,
     # max_i w_i * clip(1 - ratio_i, 0, 1). Each level can only add evidence,
