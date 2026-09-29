@@ -263,15 +263,13 @@ def multilevel_interval_coverage(
       spirit of the CRPS Resolution component. It compares the model's mean
       interval width against the climatology interval at the same level,
       ``1 - weighted_mean(model_width / climatology_width)``, weighting each
-      level by how well it is calibrated: weight 1 when
-      ``|emp(tau) - tau| <= tolerance``, falling linearly to 0 at twice the
-      tolerance. Higher is better (intervals sharper than the marginal baseline
-      while staying honest). Down-weighting miscalibrated levels is the point:
-      intervals that look "sharp" only because they are over-confident lose
-      their weight beyond the tolerance, and a level drifting across the
-      tolerance changes the proxy gradually (NF3-02). Within the tolerance a
-      sharper, slightly over-confident level still counts fully (the
-      resolution/reliability trade-off).
+      level by how well it is calibrated: weight 1 at ``emp(tau) == tau``,
+      falling linearly to 0 at ``|emp(tau) - tau| = 2 × tolerance``. Higher is
+      better (intervals sharper than the marginal baseline while staying
+      honest). Down-weighting miscalibrated levels is the point: every step
+      away from nominal coverage costs weight, so intervals that look "sharp"
+      only because they are over-confident gain little and lose beyond the
+      tolerance (NF3-02, NF7-01; methodology 2.3).
 
     Why two numbers
     ---------------
@@ -295,7 +293,7 @@ def multilevel_interval_coverage(
     tolerance : float, default=0.05
       Absolute coverage gap within which a level is deemed calibrated — used
       for the verdict and ``n_calibrated_levels``; the sharpness weight falls
-      from 1 at this gap to 0 at twice this gap.
+      from 1 at a zero gap to 0 at twice this gap.
 
     Returns
     -------
@@ -382,11 +380,12 @@ def multilevel_interval_coverage(
         width = float(np.mean(upper - lower))
         ref_width = float(ref_widths[i])
         calibrated = abs(cal_err) <= tolerance
-        # Soft admission (NF3-02): full weight within the tolerance, falling
-        # linearly to zero at twice the tolerance, so one level drifting across
-        # the gate moves the proxy gradually instead of switching it.
+        # Soft admission: the weight falls linearly from 1 at nominal coverage
+        # to 0 at twice the tolerance. No free zone (NF7-01): every step towards
+        # over-confidence costs weight, so narrowing a level buys sharpness only
+        # at a price (NF3-02 removed the hard gate; methodology 2.3).
         if tolerance > 0.0:
-            weight = float(np.clip((2.0 * tolerance - abs(cal_err)) / tolerance, 0.0, 1.0))
+            weight = float(np.clip(1.0 - abs(cal_err) / (2.0 * tolerance), 0.0, 1.0))
         else:
             weight = 1.0 if cal_err == 0.0 else 0.0
 

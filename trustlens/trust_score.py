@@ -30,7 +30,7 @@ a certification or a regulatory assessment (ADR-001).
  * **0–39 (D)**   — Low. Serious issues; do not deploy.
  * **N/A**        — No dimension could be scored (insufficient evidence).
 
-Formula (methodology 2.2)
+Formula (methodology 2.3)
 -------------------------
 1. Score every dimension that was assessed (0–100):
 
@@ -88,7 +88,7 @@ import numpy as np
 # Constants
 # ---------------------------------------------------------------------------
 
-SCORE_VERSION = "2.2"
+SCORE_VERSION = "2.3"
 
 # Grade reported when no dimension could be scored (insufficient evidence).
 NOT_ASSESSED_GRADE = "N/A"
@@ -799,8 +799,9 @@ _REGRESSION_DEFAULT_WEIGHTS: dict[str, float] = {
 # questions and should NOT be unified:
 #   * 0.05 (metric layer) decides which levels are calibrated *enough* to count
 #     fully in the sharpness proxy, so over-confident intervals cannot be
-#     rewarded for looking "sharp". Since methodology 2.2 a level's weight falls
-#     linearly from 1 at 0.05 to 0 at 0.10 instead of a hard pass/fail (NF3-02).
+#     rewarded for looking "sharp". Since methodology 2.3 a level's weight falls
+#     linearly from 1 at nominal coverage to 0 at 0.10, with no free zone
+#     (NF3-02 replaced the hard pass/fail, NF7-01 removed the flat part).
 #   * 0.20 (here) is a smooth ramp mapping the continuous ICE / |calibration_error|
 #     onto the 0–100 sub-score, so calibration quality degrades gracefully rather
 #     than cliff-edging. A gradient, not a gate.
@@ -909,8 +910,8 @@ def _informativeness_from_sharpness(coverage: dict, fallback: float | None = Non
     sharpness proxy (RFC #155).
 
     ``max(100 × sharpness_evidence, fallback)``, where ``sharpness_evidence`` is
-    the best level's ``w × clip(1 − width ratio, 0, 1)`` (``w`` = 1 within the
-    calibration tolerance, 0 at twice it) and ``fallback`` the error-variance
+    the best level's ``w × clip(1 − width ratio, 0, 1)`` (``w`` = 1 at nominal
+    coverage, 0 at twice the calibration tolerance) and ``fallback`` the error-variance
     correlation score when predicted variance was supplied, else 0. Rewards
     intervals sharper than the climatology baseline among well-calibrated
     levels, the CRPS-Resolution analog of the correlation-based score; the
