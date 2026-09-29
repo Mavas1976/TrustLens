@@ -167,3 +167,40 @@ def test_widening_an_over_covering_level_never_raises_the_score():
         scores.append(report.trust_score.score)
     rises = [b - a for a, b in zip(scores, scores[1:]) if b > a]
     assert not rises, scores
+
+
+def test_narrowing_into_over_confidence_gains_at_most_rounding():
+    """NF7-01 (methodology 2.3): with no free calibration zone, narrowing a level
+    until it is over-confident no longer buys points (64 -> 72 in 2.2)."""
+    from scipy.stats import norm
+
+    rng = np.random.default_rng(7)
+    f = rng.normal(size=4000)
+    y = f + rng.normal(size=4000)
+    levels = (0.1, 0.5, 0.9)
+    scores, errors = [], []
+    for k in (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.45, 0.4, 0.3):
+        intervals = {
+            lvl: (
+                f - norm.ppf(0.5 + lvl / 2) * (k if lvl == 0.1 else 1.0),
+                f + norm.ppf(0.5 + lvl / 2) * (k if lvl == 0.1 else 1.0),
+            )
+            for lvl in levels
+        }
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            report = analyze(
+                None,
+                None,
+                y,
+                y_pred=f,
+                task="regression",
+                prediction_intervals=intervals,
+                verbose=False,
+            )
+        cov = report.results["regression"]["interval_coverage"]
+        errors.append(next(p["calibration_error"] for p in cov["per_level"] if p["level"] == 0.1))
+        scores.append(report.trust_score.score)
+    assert errors[-1] < -0.05 < errors[0]
+    assert max(scores) <= scores[0] + 1, scores
+    assert scores[-1] < scores[0], scores

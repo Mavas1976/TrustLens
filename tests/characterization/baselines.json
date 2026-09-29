@@ -268,7 +268,7 @@
       "is_blocked": false,
       "blockers": [],
       "caps_applied": [],
-      "score_version": "2.2"
+      "score_version": "2.3"
     },
     "metadata": {
       "n_samples": 100,
@@ -556,7 +556,7 @@
         "Blocked by severe fairness violation (largest gap 0.200 > 0.15)"
       ],
       "caps_applied": [],
-      "score_version": "2.2"
+      "score_version": "2.3"
     },
     "metadata": {
       "n_samples": 100,

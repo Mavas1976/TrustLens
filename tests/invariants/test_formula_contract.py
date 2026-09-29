@@ -58,8 +58,8 @@ def _results(ece, auroc, error_rate, gaps=None, oce=0.0, accuracy=None, baseline
 
 
 def test_score_version():
-    assert SCORE_VERSION == "2.2"
-    assert compute_trust_score(_results(0.02, 0.9, 0.1)).score_version == "2.2"
+    assert SCORE_VERSION == "2.3"
+    assert compute_trust_score(_results(0.02, 0.9, 0.1)).score_version == "2.3"
 
 
 @pytest.mark.parametrize("ece", [0.0, 0.03, 0.1, 0.2, 0.3])
@@ -225,7 +225,7 @@ def test_legacy_results_are_flagged():
     del results["calibration"]["overconfidence_error"]
     with pytest.warns(UserWarning, match="before Trust Score methodology 2.0"):
         ts = compute_trust_score(results)
-    assert ts.score_version == "2.2-legacy-input"
+    assert ts.score_version == "2.3-legacy-input"
 
 
 def test_zero_weight_on_every_assessed_dimension_is_rejected():

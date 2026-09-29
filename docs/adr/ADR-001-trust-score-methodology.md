@@ -46,9 +46,9 @@ methodology version must satisfy:
 - Worse calibration with the same predictions never raises the score. For
   regression intervals this holds for widening a level or shifting it away
   from nominal coverage; narrowing a level trades sharpness against
-  calibration, and within the 0.05 calibration tolerance a sharper, slightly
-  over-confident level can raise the informativeness sub-score (the
-  resolution/reliability trade-off; an open design question, see §5).
+  calibration (the resolution/reliability trade-off). Since methodology 2.3
+  the calibration weight has no free zone, so the gain from narrowing into
+  over-confidence is small and peaks near the tolerance (§4d).
   This invariant is about the scoring mechanisms (ceilings, blockers, the
   informativeness rule). The underlying metrics are not monotone in every
   change of input: an extra error can lower ECE for an under-confident model,
@@ -137,16 +137,21 @@ for them. Instead, every issue has a regression test that fails on the
 pre-fix code; for the 2.2 changes this was checked by running the new tests
 against the 2.1 code and against targeted mutants.
 
-### 5. Open questions
+### 4d. Methodology 2.3 (`score_version = "2.3"`)
 
-- Regression sharpness vs calibration (NF7-01): the informativeness evidence
-  gives full weight to any level within the 0.05 calibration tolerance, so
-  narrowing a level until it is slightly over-confident can raise the score
-  (up to about +8 points in the verifier's repro, and a few cases up to +11
-  across a random search). Options: start the calibration weight falling at 0
-  instead of at the tolerance, weight sharpness by the level's own coverage
-  error, or accept the trade-off as documented. This is a methodology decision
-  for the maintainer.
+Decision by the repository owner on the open question NF7-01 (option b).
+
+| Topic | Decision | Issue |
+|---|---|---|
+| Calibration weight of an interval level | `w = clip(1 − |emp − tau| / 0.10, 0, 1)`: 1 at nominal coverage, 0 at a coverage error of 0.10. In 2.2 the weight stayed 1 up to 0.05, so narrowing a level into slight over-confidence was free and could raise the score (64 → 72 in the verifier's repro; +11 at most in a 51-configuration grid). With 2.3 the same repro stays at 64–65 and then falls, and the grid's largest gain is +4, in each case at a coverage error of 0.025 or less, where the level is sharper at almost the same calibration. | NF7-01 |
+| Unchanged | The 0.05 tolerance still defines `n_calibrated_levels` and the verdict; weights of the dimensions, the ceilings and the classification score are unchanged, and no reference model changes score. | |
+
+Considered and rejected: accepting the trade-off as documented (leaves an
+exception to the calibration invariant), and weighting sharpness by each
+level's own coverage error (a larger redesign of a mechanism that had just
+been stabilised).
+
+### 5. Open questions
 
 - The package version is still 0.5.0 while the scores follow methodology 2.0.
   `score_version` identifies the methodology. Bump the package version when

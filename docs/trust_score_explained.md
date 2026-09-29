@@ -16,8 +16,8 @@ probability of failure, a guarantee of safe behaviour, a certification or a
 regulatory assessment. Use it to rank candidates and to gate releases, and use
 the sub-scores and metric pages to decide what to fix.
 
-This page describes **methodology 2.2** (`TrustScoreResult.score_version`),
-introduced after the 2026-09 audit and two independent verifications. The design decisions and their rationale
+This page describes **methodology 2.3** (`TrustScoreResult.score_version`),
+introduced after the 2026-09 audit and a series of independent verifications. The design decisions and their rationale
 are recorded in [ADR-001](adr/ADR-001-trust-score-methodology.md).
 
 ## Inputs Used
@@ -115,12 +115,17 @@ stops at 59 (grade C) instead of blocking.
 Both regression blockers have ceiling ramps as well: the ceiling falls from 100
 to 39 as the skill (R²) drops from 0.10 to 0, and as the coverage shortfall
 grows from 0.05 to 0.10. Uncertainty informativeness from interval mappings is
-the best level's calibration weight (1 within 0.05 of nominal coverage, 0 at
-0.10) times its sharpness against climatology; with `predicted_variance` the
-sub-score is the larger of that and the error-variance correlation score.
-Widening a level or shifting it away from nominal coverage never raises the
-score. Narrowing a level is a trade-off: within the 0.05 tolerance a sharper,
-slightly over-confident level can raise informativeness by a few points.
+the best level's calibration weight (1 at nominal coverage, falling linearly
+to 0 at a coverage error of 0.10) times its sharpness against climatology;
+with `predicted_variance` the sub-score is the larger of that and the
+error-variance correlation score. Widening a level or shifting it away from
+nominal coverage never raises the score. Narrowing a level trades sharpness
+against calibration; because every step away from nominal coverage costs
+weight, the gain from narrowing into over-confidence is small (at most +4 in a
+51-configuration grid; up to about +8 in a random search). Compared with 2.2,
+methodology 2.3 only ever lowers regression scores: for well-calibrated
+intervals from sampling noise alone by 0.2–1.1 points on average (worst case
+about 6) at n = 500–5000.
 Intervals from a multi-level mapping (including a single level) that are all
 unusable score 0.
 
@@ -176,7 +181,7 @@ data splits and seeds). `tests/reference/test_published_table.py` recomputes
 every value in the current-methodology column from this page, so the table
 cannot drift from the code:
 
-| Model | v0.5.0 | current (2.2) |
+| Model | v0.5.0 | current (2.3) |
 |---|---|---|
 | breast_cancer · LogReg | 68/D blocked | 93/A |
 | breast_cancer · RandomForest | 70/B | 87/A |

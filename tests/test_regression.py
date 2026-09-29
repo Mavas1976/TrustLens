@@ -522,7 +522,7 @@ def _intervals_with_coverage(y, coverage, half_width):
 
 
 def test_sharpness_levels_are_weighted_by_calibration():
-    """NF3-02 / NF4-04: weight 1 within the tolerance, 0 at twice it, linear between."""
+    """NF7-01 / NF4-04: weight 1 at nominal coverage, falling linearly to 0 at twice the tolerance."""
     y = np.linspace(0.0, 100.0, 1000)
     spec = {0.5: (0.5, 10.0), 0.8: (0.725, 20.0), 0.9: (0.78, 30.0)}  # errors 0, -0.075, -0.12
     intervals = {lvl: _intervals_with_coverage(y, cov, hw) for lvl, (cov, hw) in spec.items()}
@@ -532,7 +532,7 @@ def test_sharpness_levels_are_weighted_by_calibration():
         ref = np.quantile(y, 0.5 + lvl / 2) - np.quantile(y, 0.5 - lvl / 2)
         return 2 * hw / ref
 
-    expected = 1 - (1.0 * ratio(0.5, 10.0) + 0.5 * ratio(0.8, 20.0)) / 1.5
+    expected = 1 - (1.0 * ratio(0.5, 10.0) + 0.25 * ratio(0.8, 20.0)) / 1.25  # weights 1, 0.25, 0
     assert out["n_calibrated_levels"] == 1
     assert out["sharpness_weight"] == 1.0
     assert out["sharpness_skill"] == pytest.approx(expected, abs=1e-4)
@@ -543,14 +543,14 @@ def test_sharpness_levels_are_weighted_by_calibration():
     intervals = {lvl: _intervals_with_coverage(y, cov, hw) for lvl, (cov, hw) in band.items()}
     out = multilevel_interval_coverage(y, intervals, tolerance=0.05)
     assert out["n_calibrated_levels"] == 0
-    assert out["sharpness_weight"] == pytest.approx(0.5)
+    assert out["sharpness_weight"] == pytest.approx(0.25)  # 1 - 0.075 / 0.10
     assert out["sharpness_skill"] is not None
 
 
 def test_sharpness_evidence_is_the_best_weighted_level():
     """NF6-01: scoring evidence is max_i w_i * clip(1 - ratio_i, 0, 1)."""
     y = np.linspace(0.0, 100.0, 1000)
-    spec = {0.5: (0.5, 10.0), 0.8: (0.725, 20.0)}  # weights 1 and 0.5
+    spec = {0.5: (0.5, 10.0), 0.8: (0.725, 20.0)}  # weights 1 and 0.25
     intervals = {lvl: _intervals_with_coverage(y, cov, hw) for lvl, (cov, hw) in spec.items()}
     out = multilevel_interval_coverage(y, intervals, tolerance=0.05)
 
@@ -558,7 +558,7 @@ def test_sharpness_evidence_is_the_best_weighted_level():
         ref = np.quantile(y, 0.5 + lvl / 2) - np.quantile(y, 0.5 - lvl / 2)
         return w * min(max(1 - 2 * hw / ref, 0.0), 1.0)
 
-    expected = max(term(0.5, 10.0, 1.0), term(0.8, 20.0, 0.5))
+    expected = max(term(0.5, 10.0, 1.0), term(0.8, 20.0, 0.25))
     assert out["sharpness_evidence"] == pytest.approx(expected, abs=1e-4)
 
 
@@ -568,7 +568,20 @@ def test_sharpness_evidence_uses_each_level_own_weight():
     y = np.linspace(0.0, 100.0, 1000)
     ref50 = np.quantile(y, 0.75) - np.quantile(y, 0.25)
     ref80 = np.quantile(y, 0.9) - np.quantile(y, 0.1)
-    spec = {0.5: (0.5, 0.45 * ref50), 0.8: (0.725, 0.1 * ref80)}  # ratios 0.9 (w 1), 0.2 (w 0.5)
+    spec = {0.5: (0.5, 0.45 * ref50), 0.8: (0.725, 0.1 * ref80)}  # ratios 0.9 (w 1), 0.2 (w 0.25)
     intervals = {lvl: _intervals_with_coverage(y, cov, hw) for lvl, (cov, hw) in spec.items()}
     out = multilevel_interval_coverage(y, intervals, tolerance=0.05)
-    assert out["sharpness_evidence"] == pytest.approx(0.5 * 0.8, abs=2e-3)
+    assert out["sharpness_evidence"] == pytest.approx(0.25 * 0.8, abs=2e-3)
+
+
+def test_calibration_weight_has_no_free_zone():
+    """NF7-01 (methodology 2.3): a level 0.03 off nominal already loses 30% of its weight."""
+    y = np.linspace(0.0, 100.0, 1000)
+    intervals = {0.5: _intervals_with_coverage(y, 0.47, 10.0)}  # error -0.03
+    out = multilevel_interval_coverage(y, intervals, tolerance=0.05)
+    assert out["n_calibrated_levels"] == 1  # still within the verdict tolerance
+    assert out["sharpness_weight"] == pytest.approx(0.7)
+    # Over-coverage loses weight symmetrically (NF8-02).
+    intervals = {0.5: _intervals_with_coverage(y, 0.53, 10.0)}  # error +0.03
+    out = multilevel_interval_coverage(y, intervals, tolerance=0.05)
+    assert out["sharpness_weight"] == pytest.approx(0.7)
